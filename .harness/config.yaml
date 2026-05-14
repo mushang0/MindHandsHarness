@@ -1,0 +1,24 @@
+# Managed Agent Harness Configuration
+
+# Mode: protocol_first | runtime_script
+# protocol_first: Agents manually follow the protocols defined in .harness/protocols/
+# runtime_script: Future mode where dispatching and logging are automated via scripts.
+harness_mode: protocol_first
+
+runtime_dispatch: manual_or_ide
+default_language: en-US
+
+context_policy:
+  coordinator_raw_log_limit: 0  # Coordinator should never receive raw execution logs
+  worker_result_max_tokens: 1200
+  evidence_required: true
+
+memory_policy:
+  worker_can_write_memory: false
+  memory_update_requires_coordinator_approval: true
+  only_verified_facts: true
+
+session_policy:
+  append_only: true
+  log_raw_outputs_to_logs_dir: true
+  summarize_before_returning_to_coordinator: true
