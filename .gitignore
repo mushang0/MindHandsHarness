@@ -1,0 +1,14 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+
+# Harness runtime state and generated mission artifacts
+.harness/runtime/
+.harness/sessions/
+.harness/tasks/
+.harness/logs/
+
+# Local scratch files
+*.log
+*.tmp
+

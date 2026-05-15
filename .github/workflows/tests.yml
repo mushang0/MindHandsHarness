@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run regression tests
+        run: python3 .harness/test_harness_cli.py
+
+      - name: Compile Python files
+        run: |
+          PYTHONPYCACHEPREFIX=/tmp/mindhandsharness_pycache \
+            python3 -m py_compile .harness/bin/harness.py .harness/test_harness_cli.py
+
+      - name: Run harness doctor
+        run: python3 .harness/bin/harness.py doctor
+
