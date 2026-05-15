@@ -9,9 +9,14 @@ Each line in a `.jsonl` file in `.harness/sessions/` must be a valid JSON object
 - `task_id`: (string, optional) e.g., "T-20260514-001".
 - `event_type`: (string) One of the following:
     - `SESSION_START`: Initializing a new session.
+    - `MISSION_START`: Initializing a mission within a session.
     - `TASK_DISPATCH`: Coordinator sends a task packet.
+    - `SPEC_CREATED`: Coordinator creates a mutable implementation spec draft.
+    - `SPEC_READY`: Coordinator validates and freezes a versioned implementation spec snapshot.
     - `TOOL_CALL`: Worker uses a tool.
     - `WORKER_RESULT`: Worker reports back.
+    - `AUTO_ARCHIVE`: Harness archives old runtime artifacts before starting a new mission.
+    - `MISSION_ARCHIVE`: Harness archives the active mission on explicit request.
     - `MEMORY_PROPOSAL`: Memory curator proposes an update.
     - `MEMORY_COMMIT`: Memory update approved and committed.
     - `USER_INTERACTION`: Input or feedback from user.

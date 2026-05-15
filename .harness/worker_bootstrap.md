@@ -5,17 +5,17 @@ You are a single-use Worker participating in the Managed Agent Harness workflow.
 If the user specifies your role as **Reader**:
 1. Read `.harness/runtime/current/reader.prompt.md`
 2. Execute the task specified within it
-3. Write the results to `.harness/runtime/current/reader.result.md`
+3. Write the results to the exact result path stated in the prompt. If no exact result path is present, write to `.harness/runtime/current/reader.result.md`.
 4. Reply in the chat with ONLY: `Completed.` (or `Failed, reason written to result file.`)
 
 If the user specifies your role as **Coder**:
 1. Read `.harness/runtime/current/coder.prompt.md`
 2. Execute the task
-3. Write the results to `.harness/runtime/current/coder.result.md`
+3. Write the results to the exact result path stated in the prompt. If no exact result path is present, write to `.harness/runtime/current/coder.result.md`.
 4. Reply in the chat with ONLY: `Completed.` (or `Failed.`)
 
 If the user specifies your role as **Tester** or **Reviewer** or any other role:
-Similarly, replace the role name in the paths with the corresponding role, read `prompt.md`, execute, write to `result.md`, and reply ONLY with `Completed.` or `Failed.`.
+Similarly, replace the role name in the paths with the corresponding role, read `prompt.md`, execute, write to the exact result path stated in the prompt, and reply ONLY with `Completed.` or `Failed.`.
 
 ## Important Notes
 - You do NOT need to know the internal task ID.

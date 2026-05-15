@@ -1,47 +1,13 @@
-# Protocol: Task Packet
+# Task Packet Protocol
 
-This template is used by the **Coordinator Brain** to dispatch a specific task to a **Worker Hand**.
+When a Coordinator dispatches a Worker, a `Task Packet` is generated. To enforce strict role boundaries, every task MUST have an explicitly defined `Task Type`.
 
----
+## Supported Task Types and Boundaries
 
-## Task Metadata
-- **Task ID**: [Unique ID, e.g., T-2026-05-14-001]
-- **Worker Type**: [Reader | Coder | Tester | Reviewer]
-- **Priority**: [Low | Medium | High | Critical]
+- **`investigation`**: Used for `Reader` workers. The worker must ONLY answer specific questions and collect evidence. They must NOT suggest implementation plans or modify code.
+- **`implementation`**: Used for `Coder` workers. The worker must strictly execute the provided `Implementation Spec`. They must NOT design high-level logic, change scope, or alter defaults not specified in the spec.
+- **`verification`**: Used for `Tester` workers. The worker must ONLY verify the system against defined criteria.
+- **`review`**: Used for `Reviewer` workers. The worker must audit the diff against the `Implementation Spec` to ensure no unauthorized deviations occurred.
+- **`memory-curation`**: Used for `Memory Curator` workers. The worker must only propose updates to long-term project memory based on *verified* facts, never unverified assumptions.
 
-## Objective
-[Clear, concise description of what the worker needs to achieve.]
-
-## Context & Scope
-- **Files Allowed**: [List of files or directories]
-- **Relevant Snippets**: [Links to specific code or previous findings]
-- **Excluded Areas / Non-Goals**: [What the worker should NOT touch or look at]
-
-## Permissions
-- **Read**: [Allowed paths]
-- **Write**: [Allowed paths or None]
-- **Shell**: [Allowed commands or None]
-- **Network**: [Allowed | Forbidden]
-
-## Context Budget
-- **Max files to inspect**: [Number]
-- **Max snippets to return**: [Number]
-- **Max output length**: [e.g., 1000 tokens]
-
-## Success Criteria
-- [e.g., All tests in X file must pass]
-- [e.g., Provide a summary of the logic in Y]
-
-## Escalation Conditions
-Stop and report back if:
-- Required file is missing or inaccessible.
-- Scope is significantly larger than expected.
-- Task conflicts with existing memory or constraints.
-- Environment setup is missing or unknown.
-
-## Rollback Plan
-[How to revert if this worker modifies files, e.g., git checkout -- file]
-
-## Output Format
-- **Format**: [Summary | Patch | Evidence List]
-- **Required Fields**: [e.g., Conclusion, Evidence, Risks]
+The `Task Type` dictates what the worker is allowed to do. A worker receiving an `investigation` task must never write code. A worker receiving an `implementation` task must never act as a primary investigator.

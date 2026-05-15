@@ -1,36 +1,112 @@
 # Protocol: Worker Result
 
-This template is used by **Worker Hands** to report their findings or work back to the **Coordinator Brain**.
+This template is used by **Worker Hands** to report their findings or work back to the **Coordinator Brain**. Depending on your assigned role, you MUST include specific mandatory blocks.
 
 ---
 
-## Task Metadata
-- **Task ID**: [Matching Task ID from Packet]
-- **Worker ID**: [Identity of the worker]
+## Common Metadata
+- **Role**: [reader | coder | tester | reviewer]
 - **Status**: [Success | Partial Success | Failure | Blocked]
 
-## Executive Summary
-[A high-level summary of what was accomplished, max 5 bullet points.]
+---
 
-## Output Budget
-- **Evidence items**: max 10 items.
-- **Evidence format**: file path + line range + one-sentence explanation.
-- **Log limit**: Raw logs > 30 lines MUST be saved to `.harness/logs/` and referenced.
-- **File limit**: Do not include full file contents unless explicitly requested.
+## 1. Reader Result (Mandatory Blocks)
+If you are a `Reader` (Task Type: `investigation`), your output MUST be structured as:
 
-## Detailed Findings / Evidence
-[Specific details, links to files, or references to .harness/logs/.]
+```markdown
+### Questions Answered
+#### Q1: [Repeat the exact question asked by Coordinator]
+- Answer:
+- Evidence: [File path + line numbers]
+- Confidence: [High | Medium | Low]
+- Unknowns: [Any missing context]
 
-## Actions Taken
-- [e.g., Read file X]
-- [e.g., Applied patch to Y]
-- [e.g., Ran test command Z]
+#### Q2: ...
 
-## Risks & Issues
-[Any unexpected findings, side effects, or blockers encountered during the task.]
+### Facts
+[List concrete discoveries]
 
-## Execution Blockers / Factual Handover
-[Only list factual blockers or execution-level follow-ups. Do NOT provide strategic or architectural recommendations.]
+### Contradictions
+[List any conflicts found between code, documentation, or hypotheses]
 
+### Remaining Unknowns
+[List anything that could not be verified]
+
+### Boundary Statement
+*Reader does not decide implementation. Coordinator must convert evidence into Implementation Spec.*
+```
+
+---
+
+## 2. Coder Result (Mandatory Blocks)
+If you are a `Coder` (Task Type: `implementation`), your output MUST be structured as:
+
+```markdown
+### Spec Compliance
+- Fully Followed: [List spec items executed exactly as requested]
+
+### Deviations
+- [List any approved deviations or Tier B choices]
+
+### Assumptions Made
+- [List any engineering assumptions made]
+
+### Stop Conditions Encountered
+- [List if you were blocked and why]
+
+### Files Modified
+- [List files modified]
+```
+
+---
+
+## 3. Tester Result (Mandatory Blocks)
+If you are a `Tester` (Task Type: `verification`), your output MUST be structured as:
+
+```markdown
+## Verification Matrix
+- [Test 1]: [Description]
+
+## Commands Run
+- [Exact shell commands]
+
+## Pass/Fail
+- [Result summary]
+
+## Evidence
+- [Relevant logs or outputs]
+```
+
+---
+
+## 4. Reviewer Result (Mandatory Blocks)
+If you are a `Reviewer` (Task Type: `review`), your output MUST be structured as:
+
+```markdown
+## Spec Audit
+- [Did the Coder strictly adhere to the Implementation Spec?]
+
+## Scope Violations
+- [Did the Coder take unauthorized autonomy or expand scope?]
+
+## Risk Rating
+- [Low | Medium | High]
+
+## Required Fixes
+- [List specific feedback]
+```
+---
+
+## 5. Memory Curator Result (Mandatory Blocks)
+If you are a `Memory Curator` (Task Type: `memory-curation`), your output MUST be structured as:
+
+```markdown
 ## Proposed Memory Updates
-[List any new facts or rules discovered that should be moved to long-term memory.]
+- [List specific changes to project.md]
+
+## Evidence
+- [Reasoning/Findings backing the update]
+
+## Verification
+- [How can this memory be verified as stable?]
+```

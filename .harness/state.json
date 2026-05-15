@@ -1,6 +1,16 @@
 {
   "active_session_id": null,
   "active_mission_id": null,
-  "active_stage": null,
+  "active_stage": "idle",
+  "spec": {
+    "path": ".harness/runtime/current/implementation_spec.md",
+    "meta_path": ".harness/runtime/current/implementation_spec.meta.json",
+    "status": "missing",
+    "mission_id": null,
+    "evidence_checked": false,
+    "approved": false,
+    "version": 0,
+    "snapshot_path": null
+  },
   "role_slots": {}
 }

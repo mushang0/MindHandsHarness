@@ -1,25 +1,37 @@
 # AI Agents Entry Point
 
-Welcome to the **Managed Agent Harness** system. This project uses a decoupled architecture to manage complexity and maintain a "clean" high-level planning context.
+Welcome to the **Managed Agent Harness** system. 
 
-## Operational Mode: Protocol-First
+## 1. Are you the Coordinator Brain?
+By default, when a user gives you a high-level goal, **you are the Coordinator Brain**. Your primary job is to **plan, decide, and manage**.
 
-This is a **Protocol-First Harness**. There is no external model dispatcher; `harness.py` automates local bookkeeping, Role-slot tracking, and prompt preparation. Every AI agent MUST follow the communication protocols and act based on their assigned Role (e.g. Reader, Coder) via `.harness/worker_bootstrap.md`.
+### Coordinator Rules:
+1. **No Blind Exploration**: Do NOT use tools to arbitrarily list directories or read configs just to learn the system. However, if you know a specific critical file and need first-hand details quickly, you MAY use your file reading tool to read it directly instead of dispatching a sub-agent.
+2. **Use the Harness CLI**: Strictly rely on `python3 .harness/bin/harness.py` to push tasks forward. 
+3. **Delegation is Key**: Delegate codebase reading, coding, or testing to Sub-Agents via the harness.
+4. **Language Rule**: Always respond to the USER in the language they use. Internal task packets, prompts, results, and memory updates can be in either English or Chinese.
 
-## Instructions for AI Assistants
+### Coordinator Workflow:
+1. **Start**: Run `python3 .harness/bin/harness.py start "<Mission Objective>"`
+2. **Dispatch**: Run `python3 .harness/bin/harness.py dispatch-role --role <worker_role> --objective "<Task description>" --questions "Q1...; Q2..."`. **IMPORTANT**: For Reader tasks, you MUST use the `--questions` flag to provide narrow, verifiable questions.
+3. **Instruct**: Run `python3 .harness/bin/harness.py worker-instructions` and output the resulting text directly to the user so they can start the worker. Do NOT change the core meaning of the instruction, but you are free to communicate normally.
+4. **Wait**: STOP and wait for the user to report completion.
+5. **Collect**: Run `python3 .harness/bin/harness.py collect-role --role <worker_role>`. Read the summary and decide the next step.
 
-Before taking any action, you MUST follow these steps:
+### Full Health Cycle:
+For implementation work, follow the full lifecycle:
+`start -> Reader -> collect -> evidence sufficiency check -> write-spec -> edit spec -> spec-check -> Coder -> collect -> Tester/Reviewer if needed -> archive-current`.
 
-1. **Identify Your Role**: Check your current assignment. Are you the **Coordinator** or a **Worker**?
-2. **Read the Harness Config**: Review [.harness/config.yaml](file:///.harness/config.yaml).
-3. **Use the Harness CLI**: If you are the **Coordinator**, you MUST use `python3 .harness/bin/harness.py` to manage sessions, tasks, and events. Do not ask the user to do this.
-4. **Load Role Specifics**: Read your role definition in [.harness/roles/](file:///.harness/roles/).
-5. **Access Memory**: Search [.harness/memory/](file:///.harness/memory/) for relevant project facts and rules.
-6. **Follow Protocols**: All communication between roles MUST follow the templates in [.harness/protocols/](file:///.harness/protocols/).
+Use `status` when uncertain about the next action. Use `doctor` before claiming the harness state is healthy.
 
-## System Boundary Rules
+The Coordinator may read a small, specific source snippet only after the relevant file is known and the read has a narrow purpose, such as confirming an insertion point or resolving a contradiction. Reader exists to filter the search space and provide evidence, not to make source reading impossible.
 
-- **Information Gatekeeping**: Do not pollute the Coordinator's context with raw logs or large file contents. Use structured summaries from Worker Results.
-- **Persistence**: All key events must be recorded in [.harness/sessions/](file:///.harness/sessions/) using the manual event format.
-- **Memory Promotion**: Valuable findings should be proposed for memory update via the `memory-curator` role.
+---
 
+## 2. Are you a Sub-Agent (Worker)?
+If the user's prompt explicitly tells you that you are a sub-agent or worker (e.g., "请读取 .harness/worker_bootstrap.md，并以 Reader 身份执行当前任务"), you MUST strictly follow these constraints:
+
+### Worker Rules:
+1. **Bootstrap First**: You MUST first use your file reading tool to read `.harness/worker_bootstrap.md`. 
+2. **Follow Instructions**: The bootstrap document will tell you exactly which prompt file to read based on your assigned role, what constraints you must follow, and how you must reply.
+3. **Execute**: Strictly follow the workflow defined in the bootstrap document.
