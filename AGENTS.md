@@ -11,6 +11,8 @@ By default, when a user gives you a high-level goal, **you are the Coordinator B
 2. **Use the Harness CLI**: Strictly rely on `python3 .harness/bin/harness.py` to push tasks forward. 
 3. **Delegation is Key**: Delegate codebase reading, coding, or testing to Sub-Agents via the harness.
 4. **Language Rule**: Always respond to the USER in the language they use. Internal task packets, prompts, results, and memory updates can be in either English or Chinese.
+5. **Custom Project Rules**: (Optional) Add your project-specific coding standards, architecture constraints, or forbidden patterns below this line to ensure all agents follow them.
+   - [Add your rule here...]
 
 ### Coordinator Workflow:
 1. **Start**: Run `python3 .harness/bin/harness.py start "<Mission Objective>"`

@@ -1,52 +1,80 @@
 # MindHandsHarness
 
-**Protocol-first managed agents. Separating the Brain from the Hands.**
+**A specification-driven multi-agent software engineering workflow.**
+
+MindHandsHarness is not just a tool—it's an engineering governance protocol. It transforms AI from a "chat-based guesser" into a "disciplined software engineer" by separating strategic planning from mechanical execution.
 
 [中文说明](README.zh-CN.md)
 
-MindHandsHarness is a lightweight local protocol designed to run multi-agent coding workflows with surgical precision. It prevents context pollution by enforcing a strict boundary between the **Coordinator Brain** (planning and decisions) and specialized **Worker Hands** (reading, editing, testing).
+---
 
-## The Philosophy
+# 🛑 Why? The "Drunken Walk" Problem
 
-Context is finite; discipline is infinite. Most agentic sessions fail because the model drowns in its own logs, broad code exploration, and execution noise. 
+Most AI coding sessions start strong but inevitably fail as they grow. You've likely experienced these **Core Pain Points**:
+- **Context Pollution**: Your AI gets lost in its own chat history and execution logs, leading to hallucinations and "forgetting" requirements.
+- **Silent Architecture Creep**: A coder agent starts a small refactor and ends up silently redesigning your entire database because it "thought it was better."
+- **Spec Drift**: The implementation slowly drifts away from your original intent because there is no "source of truth" outside the chat window.
+- **Token Explosion**: You're paying for 32k tokens of garbage context in every single turn.
 
-MindHandsHarness solves this by:
-1. **Isolation**: Execution details stay in worker sessions.
-2. **Evidence-First**: No code is changed until evidence is verified.
-3. **Frozen Specs**: Every implementation follows a versioned, immutable specification.
+---
 
-## Core Roles
+# 💡 The Solution: Protocol over Prompting
 
-- **Coordinator Brain**: Frames the goal, validates evidence, writes the spec, and audits the results.
-- **Reader Hand**: A specialized scout that gathers line references and answers narrow questions.
-- **Coder Hand**: A pure execution role that implements the frozen spec. No strategy, just implementation.
-- **Tester/Reviewer**: Verification roles that ensure the "hands" did exactly what the "brain" intended.
+MindHandsHarness treats AI coordination as an **engineering governance problem**. It enforces three unbreakable walls:
 
-## The Workflow Loop
+### 1. Specification-Gated Execution
+**No Spec, No Code.** The "Brain" must freeze a versioned Implementation Spec before any code is changed. The Coder is physically unable to "invent" requirements—it only executes the spec.
 
-```mermaid
-flowchart TD
-    Goal["User Goal"] --> Brain["Brain: Planning"]
-    Brain --> Reader["Reader: Evidence Collection"]
-    Reader --> Evidence["Verified Evidence"]
-    Evidence --> Brain
-    Brain --> Spec["Implementation Spec (Frozen)"]
-    Spec --> Coder["Coder: Execution"]
-    Coder --> Result["Execution Result"]
-    Result --> Reviewer["Reviewer: Audit & Verification"]
-    Reviewer --> Archive["Mission Archive"]
+### ### 2. Context Isolation
+**Context is a Liability.** Every sub-task (Reading, Coding, Testing) runs in an isolated, one-shot session. Workers only see what they *must* see. This preserves reasoning quality and slashes token costs.
+
+### 3. Persistent Engineering Memory
+**Intent vs. History.** Strategic decisions are externalized into `.harness/` artifacts. Future tasks inherit stable "Engineering Intent" instead of fragile "Chat History."
+
+---
+
+# 🚀 Quick Start (30 Seconds)
+
+To use MindHandsHarness in your existing project:
+
+### 1. Clone & Integrate
+```bash
+# Clone the repository
+git clone https://github.com/mushang0/MindHandsHarness.git
+
+# Move core protocol files to your project root
+cp -r MindHandsHarness/.harness /path/to/your/project/
+cp MindHandsHarness/AGENTS.md /path/to/your/project/
 ```
 
-## Quick Start (Chat-Based)
+### 2. Activate & Chat
+Open your AI editor (Cursor, Claude Code, etc.) in your project and say:
+> "Follow the `AGENTS.md` protocol to [Your Goal]."
 
-Using MindHandsHarness is as simple as talking to your AI. You don't need to learn a CLI—the AI handles the protocol for you.
+---
 
-1. **Invite the AI**: Copy this repository into your project.
-2. **Start a Mission**: Simply tell the AI your goal: *"Use the harness to refactor the login logic."*
-3. **Follow the Lead**: The AI will automatically initialize the mission, dispatch a Reader to investigate, and ask you to trigger sub-agents when needed.
+# 🛠 Interaction Example: JWT Auth
 
-## Repository Structure
+**User**: *"Use the harness to add JWT authentication."*
 
-- `.harness/`: The heart of the protocol. Contains roles, state management, and CLI logic.
-- `AGENTS.md`: The entry point for AI agents. **Do not modify.**
+**AI (Brain)**: *"Mission M-001 started. I'm dispatching a **Reader** to find the auth insertion points. Please run the worker instruction below."*
 
+**User**: (Runs worker) *"Reader done."*
+
+**AI (Brain)**: *"Evidence collected. I've written the **Implementation Spec** (v1). It enforces `jsonwebtoken` and a 7-day expiry. **Approve?**"*
+
+**User**: *"Approve."*
+
+**AI (Brain)**: *"Spec frozen. Dispatching **Coder** to execute. Run the Coder instruction."*
+
+**User**: (Runs worker) *"Coder done."*
+
+**AI (Brain)**: *"Mission complete. Intent preserved. Spec satisfied."*
+
+---
+
+# 📂 Repository Structure
+
+- `.harness/`: The Protocol Engine. Contains role prompts, task logic, and state management.
+- `AGENTS.md`: The "AI Constitution." **You should customize this file** to add your project-specific coding standards and rules.
+- `bin/harness.py`: The State Manager. Automates agent coordination and artifact tracking.
