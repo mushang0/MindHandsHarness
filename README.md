@@ -1,4 +1,5 @@
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/83dac4d5-d891-4bd4-b02f-93b3cbe64dbc" />
+<img width="1536" height="1024" alt="image-en" src="https://github.com/user-attachments/assets/bc78065a-957e-4d4f-967d-6a2d8292f7fe" />
+
 
 # MindHandsHarness
 
