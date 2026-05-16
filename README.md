@@ -3,6 +3,16 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/python-3.11-blue" alt="Python">
+  <img src="https://img.shields.io/badge/status-active-success" alt="Status">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+</p>
+
+<p align="center">
+  <em><strong>"Stop letting AI agents freestyle your codebase."</strong></em>
+</p>
+
+<p align="center">
   <img width="800" alt="MindHandsHarness Architecture" src="https://github.com/user-attachments/assets/bc78065a-957e-4d4f-967d-6a2d8292f7fe" />
 </p>
 
@@ -91,6 +101,16 @@ Open your AI editor (Cursor, Claude Code, etc.) in your project and say:
 <br/>
 
 ---
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.11-blue" alt="Python">
+  <img src="https://img.shields.io/badge/status-active-success" alt="Status">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+</p>
+
+<p align="center">
+  <em><strong>"别让 AI Agent 在你的代码库里‘随性发挥’。"</strong></em>
+</p>
 
 <p align="center">
   <img width="800" alt="MindHandsHarness 架构图" src="https://github.com/user-attachments/assets/336cc133-14fc-4cd1-950d-0d8e6b19a31a" />
