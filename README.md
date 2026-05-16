@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="YOUR_GITHUB_IMAGE_URL_HERE" alt="MindHandsHarness Architecture" width="800">
+</p>
+
 # MindHandsHarness
 
 **A specification-driven multi-agent software engineering workflow.**

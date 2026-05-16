@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="YOUR_GITHUB_IMAGE_URL_HERE" alt="MindHandsHarness 架构图" width="800">
+</p>
+
 # MindHandsHarness
 
 **规范驱动的多 Agent 软件工程工作流。**
