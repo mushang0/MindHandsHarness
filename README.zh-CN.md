@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="YOUR_GITHUB_IMAGE_URL_HERE" alt="MindHandsHarness 架构图" width="800">
-</p>
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/336cc133-14fc-4cd1-950d-0d8e6b19a31a" />
 
 # MindHandsHarness
 
