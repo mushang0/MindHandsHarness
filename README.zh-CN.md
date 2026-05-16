@@ -1,12 +1,14 @@
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/336cc133-14fc-4cd1-950d-0d8e6b19a31a" />
+[English](README.md) | [简体中文](README.zh-CN.md)
+
+<p align="center">
+  <img width="800" alt="MindHandsHarness 架构图" src="https://github.com/user-attachments/assets/336cc133-14fc-4cd1-950d-0d8e6b19a31a" />
+</p>
 
 # MindHandsHarness
 
 **规范驱动的多 Agent 软件工程工作流。**
 
 MindHandsHarness 不仅仅是一个工具，它是一套**工程治理协议**。它通过将战略规划与机械执行分离，将 AI 从一个“基于对话的猜测者”转变为一个“受律的软件工程师”。
-
-[English](README.md)
 
 ---
 

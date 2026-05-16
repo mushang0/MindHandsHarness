@@ -1,13 +1,14 @@
-<img width="1536" height="1024" alt="image-en" src="https://github.com/user-attachments/assets/bc78065a-957e-4d4f-967d-6a2d8292f7fe" />
+[English](README.md) | [简体中文](README.zh-CN.md)
 
+<p align="center">
+  <img width="800" alt="MindHandsHarness Architecture" src="https://github.com/user-attachments/assets/bc78065a-957e-4d4f-967d-6a2d8292f7fe" />
+</p>
 
 # MindHandsHarness
 
 **A specification-driven multi-agent software engineering workflow.**
 
 MindHandsHarness is not just a tool—it's an engineering governance protocol. It transforms AI from a "chat-based guesser" into a "disciplined software engineer" by separating strategic planning from mechanical execution.
-
-[中文说明](README.zh-CN.md)
 
 ---
 
@@ -28,7 +29,7 @@ MindHandsHarness treats AI coordination as an **engineering governance problem**
 ### 1. Specification-Gated Execution
 **No Spec, No Code.** The "Brain" must freeze a versioned Implementation Spec before any code is changed. The Coder is physically unable to "invent" requirements—it only executes the spec.
 
-### ### 2. Context Isolation
+### 2. Context Isolation
 **Context is a Liability.** Every sub-task (Reading, Coding, Testing) runs in an isolated, one-shot session. Workers only see what they *must* see. This preserves reasoning quality and slashes token costs.
 
 ### 3. Persistent Engineering Memory
