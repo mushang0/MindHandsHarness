@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="YOUR_GITHUB_IMAGE_URL_HERE" alt="MindHandsHarness Architecture" width="800">
+  <img src="[YOUR_GITHUB_IMAGE_URL_HERE](https://github.com/user-attachments/assets/f62ae648-57de-42b3-b8b5-4c067a7f986f)" alt="MindHandsHarness Architecture" width="800">
 </p>
 
 # MindHandsHarness
