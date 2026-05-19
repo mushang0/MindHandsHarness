@@ -150,23 +150,39 @@ def init_files():
         CONTEXT / "boot.md": """# Harness Boot Context
 
 ## Project Identity
-MindHandsHarness is a context-gated Coordinator/Executor harness.
+MindHandsHarness is a context-gated Coordinator/Executor harness for long-running AI software work.
+
+## Current Architecture
+- Entry Router: `AGENTS.md`
+- Project Context System: `.harness/context/` and `.harness/memory/`
+- Coordinator Runtime: `.harness/roles/coordinator.md` plus `harness context boot`
+- Executor Runtime: `.harness/roles/executor.md` plus task packets
+- Harness Runtime: `.harness/bin/harness.py`
 
 ## Core Rule
 Coordinator decides. Executor acts. Scripts manage state.
 
-## Load Order
-1. `AGENTS.md`
-2. `.harness/context/boot.md`
-3. `harness context boot`
-4. role file
-5. map, memory, and policies on demand
+## Must Load
+- `AGENTS.md`
+- this boot file
+- `python3 .harness/bin/harness.py context boot`
+- current role file
+
+## Load On Demand
+- project map: when locating files
+- context-loading policy: when deciding how much to read
+- rtk policy: when reading source, logs, generated files, or command output
+- memory policy: when applying memory
+- skill policy and registry: when a task benefits from an external skill
 
 ## Do Not Load By Default
 - old sessions
 - full logs
 - full source files
 - archived task artifacts
+
+## Handoff Goal
+A fresh Coordinator should understand current state from this file, `context boot`, project map, and memory without rereading old conversations.
 """,
         CONTEXT / "project-status.md": """# Project Status
 
@@ -180,15 +196,53 @@ No active goal.
 
 - No recent harness activity recorded.
 """,
+        MAP_MD: """# Project Map
+
+No target project map has been generated yet.
+
+Run:
+
+```bash
+python3 .harness/bin/harness.py map init
+```
+
+The map command indexes the target project while excluding `.harness/` runtime and harness internals.
+""",
+        MAP_DIFF: """# Map Update Report
+
+No target project map update has been recorded yet.
+""",
         POLICIES / "context-loading.md": """# Context Loading Policy
 
-Use progressive loading:
-1. L0: boot, project status, recent summary, runtime boot output.
-2. L1: project map, memory, policies.
-3. L2: targeted source slices, logs, and artifacts.
+MindHandsHarness uses progressive loading. The goal is to give Coordinator enough evidence to decide accurately without filling its context with source dumps, logs, or worker chatter.
 
-Coordinator may read small focused snippets directly. Large or uncertain files
-must be located through map and rtk-style search/summary first.
+## Levels
+
+### L0: Boot
+- `AGENTS.md`
+- `.harness/context/boot.md`
+- `python3 .harness/bin/harness.py context boot`
+- active role file
+
+### L1: Orientation
+- `.harness/context/project-map.md`
+- `.harness/context/project-map.index.json`
+- `.harness/memory/project.md`
+- `.harness/memory/status.md`
+- `.harness/memory/decisions.md`
+- `.harness/memory/negative.md`
+- relevant policies
+
+### L2: Targeted Detail
+- specific source ranges
+- specific logs
+- specific task packets
+- specific Executor results
+- specific skill entry documents
+
+## Context Probe Protocol
+
+For non-trivial reads, record why the context was loaded with `python3 .harness/bin/harness.py context probe ...`.
 """,
         POLICIES / "rtk-policy.md": """# RTK Policy
 
@@ -206,13 +260,11 @@ date, category, and basic duplicate prevention.
 """,
         POLICIES / "skill-policy.md": """# Skill Policy
 
-Harness indexes external skills but does not copy or own them. Skills are loaded
-on demand, and they cannot override system, user, AGENTS.md, role, or harness
-policy constraints.
+Harness indexes external skills but does not copy or own them. Skills are loaded on demand and cannot override system, user, `AGENTS.md`, role, or harness policy constraints.
 """,
         ROLES / "coordinator.md": """# Role: Coordinator
 
-You are the decision maker and context gatekeeper.
+You are the decision maker, context gatekeeper, and project handoff owner.
 
 ## Responsibilities
 - Load minimal boot context first.
@@ -227,6 +279,8 @@ You are the decision maker and context gatekeeper.
 - commands, tests, logs, downloads, or generated artifacts are involved
 - the task has more than 3 to 5 operational steps
 - debugging loops or large output are expected
+
+Use Executor modes instead of extra roles: `inspect`, `execute`, `verify`, and `review`.
 """,
         ROLES / "executor.md": """# Role: Executor
 
@@ -245,14 +299,40 @@ You are the action executor. You do not decide project strategy.
 - Save large command outputs under the task `logs/` directory.
 - Report blockers instead of silently expanding scope.
 - Do not update long-term memory directly.
+
+## Modes
+- `inspect`: read-only investigation.
+- `execute`: scoped implementation or file operations.
+- `verify`: validation and concise evidence collection.
+- `review`: focused risk checks against the task packet.
 """,
         MEMORY / "project.md": """# Project Memory
 
-Stable facts about the target project.
+## Purpose
+MindHandsHarness provides a lightweight runtime for long-running AI engineering work.
+
+## Architecture
+- Entry Router: `AGENTS.md`
+- Standing roles: Coordinator and Executor only
+- Runtime CLI: `.harness/bin/harness.py`
+- Long-term context: `.harness/context/` and `.harness/memory/`
+- Current task state: `.harness/runtime/`
+- External skill index: `.harness/skills/registry.json`
+
+## Stable Constraints
+- Do not restore Reader/Coder/Tester/Reviewer/Memory Curator as standing roles.
+- Use Executor modes instead: `inspect`, `execute`, `verify`, `review`.
+- Keep `AGENTS.md` short and route-specific.
 """,
         MEMORY / "status.md": """# Status Memory
 
-Current project state and active handoff notes.
+## Current State
+No active project session yet.
+
+## Next Likely Actions
+- Run `harness start`.
+- Run `harness map init` in the target project.
+- Use `harness context boot` for handoff.
 """,
         MEMORY / "decisions.md": """# Decisions
 
@@ -260,7 +340,10 @@ Long-lived decisions and rationale.
 """,
         MEMORY / "negative.md": """# Negative Memory
 
-Known traps, failed approaches, and things to avoid.
+## Avoid Restoring Old Role Chain
+- scope: architecture
+- avoid: Reader -> Spec -> Coder -> Tester -> Reviewer -> Memory Curator as a default route
+- replacement: Coordinator decides, Executor acts, scripts manage state
 """,
         MEMORY / "commands.md": """# Commands
 
@@ -288,6 +371,8 @@ Reusable lessons from completed tasks.
         write_json(SKILLS / "registry.json", {"version": 1, "skills": []})
     if not (SKILLS / "registry.md").exists():
         write_text(SKILLS / "registry.md", "# Skill Registry\n\nNo skills indexed yet.\n")
+    if not MAP_INDEX.exists():
+        write_json(MAP_INDEX, {"version": 1, "last_updated": None, "entries": []})
     if not STATE.exists():
         save_state(default_state())
 
@@ -427,6 +512,8 @@ def should_skip(path):
     parts = set(path.parts)
     if parts & EXCLUDED_DIRS:
         return True
+    if ".harness" in parts:
+        return True
     if path.is_dir():
         return True
     if path == MAP_INDEX or path == MAP_MD or path == MAP_DIFF:
@@ -438,8 +525,6 @@ def should_skip(path):
 
 def load_policy_for(path, line_count):
     if path.as_posix() in {"AGENTS.md"}:
-        return "always_full"
-    if path.as_posix().startswith(".harness/roles/") or path.as_posix().startswith(".harness/policies/"):
         return "always_full"
     if line_count <= 200:
         return "full_allowed"
@@ -475,16 +560,6 @@ def scan_project():
 def summarize_path(path):
     if path == "AGENTS.md":
         return "Universal router and manifest."
-    if path.startswith(".harness/roles/"):
-        return "Role definition."
-    if path.startswith(".harness/policies/"):
-        return "Harness policy."
-    if path.startswith(".harness/context/"):
-        return "Project context artifact."
-    if path.startswith(".harness/memory/"):
-        return "Long-term memory file."
-    if path.startswith(".harness/bin/"):
-        return "Runtime CLI script."
     return "Project file."
 
 
@@ -493,12 +568,12 @@ def write_project_map(entries):
         "# Project Map",
         "",
         "## Project Purpose",
-        "MindHandsHarness is a context-gated Coordinator/Executor harness.",
+        "Target project map generated by MindHandsHarness.",
         "",
         "## Important Files",
     ]
     for entry in entries:
-        if entry["path"] in {"AGENTS.md", ".harness/bin/harness.py"} or entry["path"].startswith(".harness/roles/"):
+        if entry["path"] in {"AGENTS.md", "README.md"}:
             lines.append(f"- `{entry['path']}`: {entry['summary']} ({entry['load_policy']})")
     lines.extend(["", "## Indexed Files"])
     for entry in entries:

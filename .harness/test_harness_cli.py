@@ -85,8 +85,23 @@ class HarnessV2CliTests(unittest.TestCase):
             self.assertIn("AGENTS.md", paths)
             self.assertIn("src/feature.py", paths)
             self.assertNotIn(".harness/runtime/state.json", paths)
+            self.assertFalse(any(path.startswith(".harness/") for path in paths))
             self.assertIn("src/feature.py", update.stdout)
             self.assertIn("Project Map", show.stdout)
+
+    def test_init_defaults_are_v2_ready_for_fresh_install(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "fresh"
+            (work / ".harness/bin").mkdir(parents=True)
+            shutil.copy2(REPO_ROOT / ".harness/bin/harness.py", work / ".harness/bin/harness.py")
+
+            result = run_cli(work, "init")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Context Probe Protocol", (work / ".harness/policies/context-loading.md").read_text())
+            self.assertIn("Executor modes", (work / ".harness/roles/coordinator.md").read_text())
+            self.assertIn("inspect", (work / ".harness/roles/executor.md").read_text())
+            self.assertIn("Stable Constraints", (work / ".harness/memory/project.md").read_text())
 
     def test_task_new_dispatch_collect_executor_packet(self):
         with tempfile.TemporaryDirectory() as tmp:

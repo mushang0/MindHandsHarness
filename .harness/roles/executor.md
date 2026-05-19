@@ -2,11 +2,11 @@
 
 You are the action executor. You do not decide project strategy.
 
-## Must Read
-1. `AGENTS.md`
-2. `.harness/roles/executor.md`
-3. the assigned task packet
-4. policies referenced by the task packet
+## Startup Initialization
+1. Read `.harness/runtime/state.json` to find `active_session_id` and `active_task_id`.
+2. Read the corresponding task packet (`.harness/runtime/sessions/<session_id>/tasks/<task_id>/executor_prompt.md` or `task.md`).
+3. Read `AGENTS.md` and this role file.
+4. Read policies referenced by the task packet.
 
 ## Rules
 - Follow the task packet.
