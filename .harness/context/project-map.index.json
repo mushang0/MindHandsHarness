@@ -1,0 +1,294 @@
+{
+  "version": 1,
+  "last_updated": "2026-05-19T17:11:45",
+  "entries": [
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.md",
+      "type": "file",
+      "size": 472,
+      "hash": "c24243cb3742281d72f39ce2812858e647f1ba1a5f142ac598f35be2cf3117c9",
+      "line_count": 35,
+      "load_policy": "full_allowed",
+      "summary": "Project file."
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature_request.md",
+      "type": "file",
+      "size": 422,
+      "hash": "39eeed53d87a0295e3c8759cc72f18f8fb4861b5149fb21e1f809547c9094a44",
+      "line_count": 24,
+      "load_policy": "full_allowed",
+      "summary": "Project file."
+    },
+    {
+      "path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "type": "file",
+      "size": 492,
+      "hash": "4d994fa81816f18ec79346e7dddc0b6f3b4e53dce081a10af45a7cace8b9b1f1",
+      "line_count": 22,
+      "load_policy": "full_allowed",
+      "summary": "Project file."
+    },
+    {
+      "path": ".github/workflows/tests.yml",
+      "type": "file",
+      "size": 692,
+      "hash": "37844190ed4ced883ea52d733ecb4c1592ef26c0f70ab7cc470ae896c8c7d628",
+      "line_count": 31,
+      "load_policy": "full_allowed",
+      "summary": "Project file."
+    },
+    {
+      "path": ".gitignore",
+      "type": "file",
+      "size": 194,
+      "hash": "0a3e6fee0e778a1c37b1b33e00ecab4d590de703c104d06c2b639430b9684dd3",
+      "line_count": 14,
+      "load_policy": "full_allowed",
+      "summary": "Project file."
+    },
+    {
+      "path": ".harness/bin/harness.py",
+      "type": "file",
+      "size": 33246,
+      "hash": "82c7145375e11e6b7036b58285c936ef76de7c8ab7154b7dfb6eb50315f98717",
+      "line_count": 967,
+      "load_policy": "rtk_summary_first",
+      "summary": "Runtime CLI script."
+    },
+    {
+      "path": ".harness/config.yaml",
+      "type": "file",
+      "size": 831,
+      "hash": "c2ddae106f5cfff05a027677dcb9c7429562e2153260afc5f685d3fa0d772850",
+      "line_count": 39,
+      "load_policy": "full_allowed",
+      "summary": "Project file."
+    },
+    {
+      "path": ".harness/context/boot.md",
+      "type": "file",
+      "size": 1235,
+      "hash": "61561cfb65a9889bb03077fcb605ea9ee776f109107e874b30eef85cecf71c25",
+      "line_count": 37,
+      "load_policy": "full_allowed",
+      "summary": "Project context artifact."
+    },
+    {
+      "path": ".harness/context/project-status.md",
+      "type": "file",
+      "size": 83,
+      "hash": "ba7fd66c7630210f6e0b107c9a1806ce5ecdfa078bf6233ce7a35cf13be253e1",
+      "line_count": 7,
+      "load_policy": "full_allowed",
+      "summary": "Project context artifact."
+    },
+    {
+      "path": ".harness/context/recent-summary.md",
+      "type": "file",
+      "size": 241,
+      "hash": "6f1c2b360c8b09fb644a60bd8842c475655ad03844f767c4b0b0b714259dcbde",
+      "line_count": 4,
+      "load_policy": "full_allowed",
+      "summary": "Project context artifact."
+    },
+    {
+      "path": ".harness/memory/commands.md",
+      "type": "file",
+      "size": 464,
+      "hash": "ee903b7cefd73508e370a8c940e83d77332d55cdbdbd3e5f75b0cefe2dc284d5",
+      "line_count": 26,
+      "load_policy": "full_allowed",
+      "summary": "Long-term memory file."
+    },
+    {
+      "path": ".harness/memory/decisions.md",
+      "type": "file",
+      "size": 232,
+      "hash": "923b31ac73d19c93abd92b8accf3fa4208702363adbe29520b4b8cbcf4284e2f",
+      "line_count": 8,
+      "load_policy": "full_allowed",
+      "summary": "Long-term memory file."
+    },
+    {
+      "path": ".harness/memory/files.md",
+      "type": "file",
+      "size": 765,
+      "hash": "1074744fd39910225a936a1233247b097b15c7c2448491e9424471e441d77aea",
+      "line_count": 19,
+      "load_policy": "full_allowed",
+      "summary": "Long-term memory file."
+    },
+    {
+      "path": ".harness/memory/lessons.md",
+      "type": "file",
+      "size": 50,
+      "hash": "7bd1e078d13a4ffa0014c4b400725c8553f1d0e84c8791dbd3b33b51fd29691a",
+      "line_count": 3,
+      "load_policy": "full_allowed",
+      "summary": "Long-term memory file."
+    },
+    {
+      "path": ".harness/memory/negative.md",
+      "type": "file",
+      "size": 880,
+      "hash": "ea8154b6424f5b3ae011115b2276528dd4f1cc6f72f8f5fe1c81a5fe1346f832",
+      "line_count": 19,
+      "load_policy": "full_allowed",
+      "summary": "Long-term memory file."
+    },
+    {
+      "path": ".harness/memory/project.md",
+      "type": "file",
+      "size": 763,
+      "hash": "a4d63dbc334a3c306b87a2e08db98f8279d0cefd35f7353c58ea9033186e44c0",
+      "line_count": 19,
+      "load_policy": "full_allowed",
+      "summary": "Long-term memory file."
+    },
+    {
+      "path": ".harness/memory/status.md",
+      "type": "file",
+      "size": 542,
+      "hash": "22f018af65ab96654776f23300391839c43e44a6e7dc9dac95bf6b7ac3bc90e1",
+      "line_count": 10,
+      "load_policy": "full_allowed",
+      "summary": "Long-term memory file."
+    },
+    {
+      "path": ".harness/memory/user-preferences.md",
+      "type": "file",
+      "size": 62,
+      "hash": "769940199cf65478afa9cc5d3babb3138b506f6e14f0de7b3c2a904bc8f05d8e",
+      "line_count": 3,
+      "load_policy": "full_allowed",
+      "summary": "Long-term memory file."
+    },
+    {
+      "path": ".harness/policies/context-loading.md",
+      "type": "file",
+      "size": 1573,
+      "hash": "0f3895c5d2f55ca7ded756b917cb41a39bab50fe7c430a49462cddd4934e4f72",
+      "line_count": 56,
+      "load_policy": "always_full",
+      "summary": "Harness policy."
+    },
+    {
+      "path": ".harness/policies/memory-policy.md",
+      "type": "file",
+      "size": 1483,
+      "hash": "965f19c1d5ee39609be6158234dbbd7648c084f1761d35f2ad8c968bfadbff36",
+      "line_count": 57,
+      "load_policy": "always_full",
+      "summary": "Harness policy."
+    },
+    {
+      "path": ".harness/policies/rtk-policy.md",
+      "type": "file",
+      "size": 1059,
+      "hash": "396264b1fab14b827d6b7eb79a4ae87512c5494c0ce8f179e58e3b5d87708c1b",
+      "line_count": 44,
+      "load_policy": "always_full",
+      "summary": "Harness policy."
+    },
+    {
+      "path": ".harness/policies/skill-policy.md",
+      "type": "file",
+      "size": 869,
+      "hash": "8f337b4b9ac17bf1692aa8c583cbb5d9019b8e15f63655b03be02cd4eef42ab9",
+      "line_count": 43,
+      "load_policy": "always_full",
+      "summary": "Harness policy."
+    },
+    {
+      "path": ".harness/roles/coordinator.md",
+      "type": "file",
+      "size": 3293,
+      "hash": "5146412b1fe32aaaab44bb0f10a7d9550f546cd13df0c008be0177c6f66f6526",
+      "line_count": 83,
+      "load_policy": "always_full",
+      "summary": "Role definition."
+    },
+    {
+      "path": ".harness/roles/executor.md",
+      "type": "file",
+      "size": 1345,
+      "hash": "7ed957fb4a558abe370072161b167f7068de97d19898070b8c50658ef179e6f3",
+      "line_count": 41,
+      "load_policy": "always_full",
+      "summary": "Role definition."
+    },
+    {
+      "path": ".harness/skills/registry.json",
+      "type": "file",
+      "size": 35,
+      "hash": "cae7de3b6af2fdf190923b5b0a00ac1bd2720661d88939ba181fe223f0474e81",
+      "line_count": 4,
+      "load_policy": "full_allowed",
+      "summary": "Project file."
+    },
+    {
+      "path": ".harness/skills/registry.md",
+      "type": "file",
+      "size": 41,
+      "hash": "74cbe96b7eede6351db27c7701806692dc757fc878fa5d6993121d272b669eac",
+      "line_count": 3,
+      "load_policy": "full_allowed",
+      "summary": "Project file."
+    },
+    {
+      "path": ".harness/templates/executor-result.md",
+      "type": "file",
+      "size": 466,
+      "hash": "9f9a29ca18f60a0bb603d811ed48d6f5eef6365ddde3b71313b248c5c312e287",
+      "line_count": 36,
+      "load_policy": "full_allowed",
+      "summary": "Project file."
+    },
+    {
+      "path": ".harness/templates/memory-entry.md",
+      "type": "file",
+      "size": 156,
+      "hash": "59e92d920e69cc0aebcc7a23ab9f1d15d0003ab3658627d1a5be98153dec9897",
+      "line_count": 12,
+      "load_policy": "full_allowed",
+      "summary": "Project file."
+    },
+    {
+      "path": ".harness/templates/task-packet.md",
+      "type": "file",
+      "size": 1049,
+      "hash": "e2a2dbae77398c8d04c307e8d6ad8b603feb6a711cf592f72c657217f524cf3c",
+      "line_count": 37,
+      "load_policy": "full_allowed",
+      "summary": "Project file."
+    },
+    {
+      "path": ".harness/test_harness_cli.py",
+      "type": "file",
+      "size": 13108,
+      "hash": "ad97628775f44db0b95916e7b93cbc58d4c619a758453c84bbdba7e2ce90cdd1",
+      "line_count": 317,
+      "load_policy": "rtk_summary_first",
+      "summary": "Project file."
+    },
+    {
+      "path": "AGENTS.md",
+      "type": "file",
+      "size": 2529,
+      "hash": "1b5d6ce415220c4d35df2fea68141d88ec5ffeaf2e87ccb9306aca236171f6e9",
+      "line_count": 97,
+      "load_policy": "always_full",
+      "summary": "Universal router and manifest."
+    },
+    {
+      "path": "README.md",
+      "type": "file",
+      "size": 4773,
+      "hash": "d1018411c44385d157846f78ae779feecf1275845a695925cd250c81289a8d8d",
+      "line_count": 186,
+      "load_policy": "full_allowed",
+      "summary": "Project file."
+    }
+  ]
+}

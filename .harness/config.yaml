@@ -1,24 +1,39 @@
-# Managed Agent Harness Configuration
+# MindHandsHarness v2 configuration
 
-# Mode: protocol_first | runtime_script
-# protocol_first: Agents manually follow the protocols defined in .harness/protocols/
-# runtime_script: Future mode where dispatching and logging are automated via scripts.
-harness_mode: protocol_first
-
-runtime_dispatch: manual_or_ide
+harness_version: 2
+harness_mode: coordinator_executor_runtime
 default_language: en-US
 
+roles:
+  standing:
+    - coordinator
+    - executor
+  executor_modes:
+    - inspect
+    - execute
+    - verify
+    - review
+
 context_policy:
-  coordinator_raw_log_limit: 0  # Coordinator should never receive raw execution logs
-  worker_result_max_tokens: 1200
-  evidence_required: true
+  default_loading: progressive
+  coordinator_raw_log_limit: 0
+  full_read_line_limit: 200
+  use_project_map_before_source: true
+  use_rtk_for_large_files: true
 
 memory_policy:
-  worker_can_write_memory: false
-  memory_update_requires_coordinator_approval: true
+  executor_can_write_memory: false
+  coordinator_applies_memory: true
+  scripts_enforce_format: true
   only_verified_facts: true
 
-session_policy:
-  append_only: true
-  log_raw_outputs_to_logs_dir: true
-  summarize_before_returning_to_coordinator: true
+runtime_policy:
+  state_file: .harness/runtime/state.json
+  sessions_dir: .harness/runtime/sessions
+  append_only_events: true
+  save_large_outputs_to_task_logs: true
+
+skills_policy:
+  registry_only: true
+  copy_external_skills: false
+  load_policy: on_demand

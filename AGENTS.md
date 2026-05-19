@@ -1,40 +1,97 @@
-# AI Agents Entry Point
+# MindHandsHarness Agent Router
 
-Welcome to the **Managed Agent Harness** system. 
+This file is the universal entry point. It is a router and manifest, not a
+warehouse for role-specific rules.
 
-## 1. Are you the Coordinator Brain?
-By default, when a user gives you a high-level goal, **you are the Coordinator Brain**. Your primary job is to **plan, decide, and manage**.
+## Always Follow
 
-### Coordinator Rules:
-0. **Explicit Activation**: Only initiate the Coordinator Workflow (Step 1. Start) if the user explicitly asks to "start a mission", "use the harness", or "follow the harness protocol". If the user's request is a direct instruction (e.g., "refactor this code", "fix this bug"), solve it directly using your own tools without the harness overhead.
-1. **No Blind Exploration**: Do NOT use tools to arbitrarily list directories or read configs just to learn the system. However, if you know a specific critical file and need first-hand details quickly, you MAY use your file reading tool to read it directly instead of dispatching a sub-agent.
-2. **Use the Harness CLI**: Strictly rely on `python3 .harness/bin/harness.py` to push tasks forward. 
-3. **Delegation is Key**: Delegate codebase reading, coding, or testing to Sub-Agents via the harness.
-4. **Language Rule**: Always respond to the USER in the language they use. Internal task packets, prompts, results, and memory updates can be in either English or Chinese.
-5. **Custom Project Rules**: (Optional) Add your project-specific coding standards, architecture constraints, or forbidden patterns below this line to ensure all agents follow them.
-   - [Add your rule here...]
+1. Read this file first.
+2. Determine your role: Coordinator or Executor.
+3. Load only the required context for that role.
+4. Use `.harness/bin/harness.py` for sessions, tasks, maps, memory, skills, and status.
+5. Use progressive loading before reading source or logs in full.
+6. Do not guess missing context. Load the relevant map, memory, policy, or task packet.
 
-### Coordinator Workflow:
-1. **Start**: Run `python3 .harness/bin/harness.py start "<Mission Objective>"`
-2. **Dispatch**: Run `python3 .harness/bin/harness.py dispatch-role --role <worker_role> --objective "<Task description>" --questions "Q1...; Q2..."`. **IMPORTANT**: For Reader tasks, you MUST use the `--questions` flag to provide narrow, verifiable questions.
-3. **Instruct**: Run `python3 .harness/bin/harness.py worker-instructions` and output the resulting text directly to the user so they can start the worker. Do NOT change the core meaning of the instruction, but you are free to communicate normally.
-4. **Wait**: STOP and wait for the user to report completion.
-5. **Collect**: Run `python3 .harness/bin/harness.py collect-role --role <worker_role>`. Read the summary and decide the next step.
+## Global Priority
 
-### Full Health Cycle:
-For implementation work, follow the full lifecycle:
-`start -> Reader -> collect -> evidence sufficiency check -> write-spec -> edit spec -> spec-check -> Coder -> collect -> Tester/Reviewer if needed -> archive-current`.
+1. User instruction
+2. System and safety constraints
+3. `AGENTS.md`
+4. Harness role file
+5. Task packet
+6. Project memory
+7. External skill instructions
 
-Use `status` when uncertain about the next action. Use `doctor` before claiming the harness state is healthy.
+## Role Routing
 
-The Coordinator may read a small, specific source snippet only after the relevant file is known and the read has a narrow purpose, such as confirming an insertion point or resolving a contradiction. Reader exists to filter the search space and provide evidence, not to make source reading impossible.
+### Coordinator
 
----
+Load:
 
-## 2. Are you a Sub-Agent (Worker)?
-If the user's prompt explicitly tells you that you are a sub-agent or worker (e.g., "请读取 .harness/worker_bootstrap.md，并以 Reader 身份执行当前任务"), you MUST strictly follow these constraints:
+1. `.harness/context/boot.md`
+2. `python3 .harness/bin/harness.py context boot`
+3. `.harness/roles/coordinator.md`
 
-### Worker Rules:
-1. **Bootstrap First**: You MUST first use your file reading tool to read `.harness/worker_bootstrap.md`. 
-2. **Follow Instructions**: The bootstrap document will tell you exactly which prompt file to read based on your assigned role, what constraints you must follow, and how you must reply.
-3. **Execute**: Strictly follow the workflow defined in the bootstrap document.
+Then load on demand:
+
+- `.harness/context/project-map.md`
+- `.harness/context/project-map.index.json`
+- `.harness/policies/context-loading.md`
+- `.harness/policies/rtk-policy.md`
+- `.harness/policies/memory-policy.md`
+- `.harness/policies/skill-policy.md`
+- `.harness/memory/*.md`
+
+Coordinator decides, plans, gates context, creates task packets, reviews Executor
+results, and applies approved memory updates.
+
+### Executor
+
+Load:
+
+1. `.harness/roles/executor.md`
+2. the assigned task packet
+3. policies referenced by the task packet
+
+Executor acts within the task packet. Executor may inspect, edit, run commands,
+validate, and report, but must not redefine the objective or update long-term
+memory directly.
+
+## Context Loading Rule
+
+Use this order:
+
+1. Boot/status/recent summary
+2. Project map and memory
+3. rtk-style search or summary
+4. targeted file ranges
+5. full read only when the file is small, protocol-like, or explicitly justified
+
+For non-trivial targeted reads, record a probe with:
+
+```bash
+python3 .harness/bin/harness.py context probe ...
+```
+
+For memory handoff, prefer:
+
+```bash
+python3 .harness/bin/harness.py memory show-boot
+```
+
+## Standing Roles
+
+MindHandsHarness v2 has only two standing roles:
+
+- Coordinator
+- Executor
+
+Reader, Coder, Tester, Reviewer, and Memory Curator are no longer standing
+roles. Their useful behaviors are Executor task modes: `inspect`, `execute`,
+`verify`, and `review`.
+
+## Scripted Handoff
+
+Task packets, Executor prompts, Executor results, context probes, logs, artifacts,
+memory proposals, and session events must live under `.harness/runtime/`. Do not
+use chat history as the source of truth for project state.

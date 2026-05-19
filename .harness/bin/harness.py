@@ -1,791 +1,967 @@
 #!/usr/bin/env python3
-import os
-import json
+"""MindHandsHarness v2 runtime CLI.
+
+The v2 harness has one standing decision role, one standing action role, and
+script-managed state. The CLI owns project maps, task packets, memory writes,
+skill indexes, session events, and boot-context rendering.
+"""
+
 import argparse
+import datetime as dt
+import hashlib
+import json
+import os
 import sys
-import datetime
-import shutil
-import re
+from pathlib import Path
 
-def get_markdown_section(content, section_name, level=2):
-    """Extract content under a specific header."""
-    header_prefix = "#" * level
-    escaped_name = re.escape(section_name)
-    # Stop at the next header of the SAME level that looks like a new section (e.g. ## 2.) 
-    # or a level 1 header.
-    pattern = rf"(?:^|\n){header_prefix}\s+{escaped_name}.*?\n(.*?)(?=\n{header_prefix}\s+\d+\.|\n#\s|$)"
-    match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
-    if match:
-        return match.group(1).strip()
-    return None
 
-def get_task_type_boundary(content, task_type):
-    """Extract specific boundary from task-packet.md."""
-    pattern = rf"^- \*\*`{re.escape(task_type)}`.*$"
-    match = re.search(pattern, content, re.MULTILINE)
-    if match:
-        return match.group(0).strip()
-    return None
+HARNESS = Path(".harness")
+CONTEXT = HARNESS / "context"
+MEMORY = HARNESS / "memory"
+POLICIES = HARNESS / "policies"
+ROLES = HARNESS / "roles"
+RUNTIME = HARNESS / "runtime"
+SESSIONS = RUNTIME / "sessions"
+MEMORY_PROPOSALS = RUNTIME / "memory-proposals"
+SKILLS = HARNESS / "skills"
+TEMPLATES = HARNESS / "templates"
+STATE = RUNTIME / "state.json"
+MAP_MD = CONTEXT / "project-map.md"
+MAP_INDEX = CONTEXT / "project-map.index.json"
+MAP_DIFF = CONTEXT / "map-update-report.md"
 
-BIN_DIR = ".harness/bin"
-STATE_FILE = ".harness/state.json"
-SESSIONS_DIR = ".harness/sessions"
-TASKS_DIR = ".harness/tasks"
-ARCHIVE_DIR = ".harness/tasks/archive"
-RUNTIME_DIR = ".harness/runtime/current"
-RUNTIME_TASKS_DIR = ".harness/runtime/current/tasks"
-RUNTIME_SPECS_DIR = ".harness/runtime/current/specs"
-ROLES_DIR = ".harness/roles"
-PROTOCOLS_DIR = ".harness/protocols"
-MEMORY_DIR = ".harness/memory"
+EXCLUDED_DIRS = {
+    ".git",
+    ".pytest_cache",
+    "__pycache__",
+    "node_modules",
+    ".venv",
+    "venv",
+}
+
+
+def now():
+    return dt.datetime.now().replace(microsecond=0).isoformat()
+
+
+def today():
+    return dt.datetime.now().strftime("%Y-%m-%d")
+
+
+def compact_date():
+    return dt.datetime.now().strftime("%Y%m%d")
+
+
+def ensure_dir(path):
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def read_text(path, default=""):
+    if not path.exists():
+        return default
+    return path.read_text()
+
+
+def write_text(path, text):
+    ensure_dir(path.parent)
+    path.write_text(text)
+
+
+def read_json(path, default):
+    if not path.exists():
+        return default
+    return json.loads(path.read_text())
+
+
+def write_json(path, data):
+    ensure_dir(path.parent)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
+
+def next_id(prefix, parent):
+    ensure_dir(parent)
+    stem = f"{prefix}-{compact_date()}-"
+    existing = []
+    for path in parent.iterdir():
+        if path.name.startswith(stem):
+            try:
+                existing.append(int(path.name.split("-")[-1]))
+            except ValueError:
+                pass
+    return f"{stem}{(max(existing) + 1 if existing else 1):03d}"
+
+
+def default_state():
+    return {
+        "version": 2,
+        "active_session_id": None,
+        "active_task_id": None,
+        "mode": "coordinator_executor",
+        "last_context_refresh": None,
+    }
+
 
 def load_state():
-    default_state = {
-        "active_session_id": None, 
-        "active_mission_id": None, 
-        "active_stage": "investigation", 
-        "spec": {
-            "path": ".harness/runtime/current/implementation_spec.md",
-            "meta_path": ".harness/runtime/current/implementation_spec.meta.json",
-            "status": "missing",
-            "mission_id": None,
-            "evidence_checked": False,
-            "approved": False,
-            "version": 0,
-            "snapshot_path": None
-        },
-        "role_slots": {}
-    }
-    if not os.path.exists(STATE_FILE):
-        return default_state
-    with open(STATE_FILE, "r") as f:
-        state = json.load(f)
-        if "spec" not in state:
-            state["spec"] = default_state["spec"]
-        else:
-            for k, v in default_state["spec"].items():
-                state["spec"].setdefault(k, v)
-        return state
+    state = read_json(STATE, default_state())
+    for key, value in default_state().items():
+        state.setdefault(key, value)
+    return state
+
 
 def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+    write_json(STATE, state)
 
-def emit_event(session_id, event_type, actor, summary, task_id=None, details_ref=None, artifacts=None):
-    if not session_id: return
-    log_path = os.path.join(SESSIONS_DIR, f"{session_id}.jsonl")
-    os.makedirs(SESSIONS_DIR, exist_ok=True)
+
+def active_session_dir(state=None):
+    state = state or load_state()
+    session_id = state.get("active_session_id")
+    if not session_id:
+        return None
+    return SESSIONS / session_id
+
+
+def emit_event(event_type, actor, summary, task_id=None, details_ref=None, artifacts=None):
+    state = load_state()
+    session_dir = active_session_dir(state)
+    if not session_dir:
+        return
+    ensure_dir(session_dir)
     event = {
-        "timestamp": datetime.datetime.now().isoformat(),
-        "session_id": session_id,
-        "event_type": event_type,
+        "time": now(),
+        "type": event_type,
         "actor": actor,
-        "summary": summary
+        "summary": summary,
     }
     if task_id:
         event["task_id"] = task_id
     if details_ref:
-        event["details_ref"] = details_ref
+        event["details_ref"] = str(details_ref)
     if artifacts:
-        event["artifacts"] = artifacts
-    with open(log_path, "a") as f:
-        f.write(json.dumps(event) + "\n")
+        event["artifacts"] = [str(item) for item in artifacts]
+    with (session_dir / "events.jsonl").open("a") as handle:
+        handle.write(json.dumps(event, ensure_ascii=False) + "\n")
 
-def ensure_runtime_dirs():
-    os.makedirs(RUNTIME_DIR, exist_ok=True)
-    os.makedirs(RUNTIME_TASKS_DIR, exist_ok=True)
-    os.makedirs(RUNTIME_SPECS_DIR, exist_ok=True)
 
-def runtime_has_contents():
-    if not os.path.exists(RUNTIME_DIR):
-        return False
-    for dirpath, dirnames, filenames in os.walk(RUNTIME_DIR):
-        if filenames:
-            return True
-    return False
+def init_files():
+    for path in [CONTEXT, MEMORY, POLICIES, ROLES, RUNTIME, SESSIONS, MEMORY_PROPOSALS, SKILLS, TEMPLATES]:
+        ensure_dir(path)
 
-def task_id_index():
-    ids = set()
-    pattern = re.compile(r"T-\d{8}-(\d{3})")
-    search_roots = [TASKS_DIR, RUNTIME_DIR]
-    for root in search_roots:
-        if not os.path.exists(root):
-            continue
-        for dirpath, dirnames, filenames in os.walk(root):
-            for name in dirnames + filenames:
-                match = pattern.search(name)
-                if match:
-                    ids.add(match.group(0))
-    if os.path.exists(SESSIONS_DIR):
-        for name in os.listdir(SESSIONS_DIR):
-            if not name.endswith(".jsonl"):
-                continue
-            with open(os.path.join(SESSIONS_DIR, name), "r") as f:
-                for line in f:
-                    for match in pattern.finditer(line):
-                        ids.add(match.group(0))
-    return ids
+    files = {
+        CONTEXT / "boot.md": """# Harness Boot Context
 
-def get_next_id(prefix, directory, ext):
-    today = datetime.datetime.now().strftime("%Y%m%d")
-    os.makedirs(directory, exist_ok=True)
-    existing = [f for f in os.listdir(directory) if f.startswith(f"{prefix}-{today}-") and (not ext or f.endswith(ext))]
-    if not existing:
-        return f"{prefix}-{today}-001"
-    indices = []
-    for f in existing:
-        parts = f.split("-")
-        if len(parts) >= 3:
-            try:
-                indices.append(int(parts[2].split(".")[0]))
-            except ValueError:
-                continue
-    if not indices:
-        return f"{prefix}-{today}-001"
-    next_idx = max(indices) + 1
-    return f"{prefix}-{today}-{next_idx:03d}"
+## Project Identity
+MindHandsHarness is a context-gated Coordinator/Executor harness.
 
-def generate_task_id():
-    today = datetime.datetime.now().strftime("%Y%m%d")
-    ids = task_id_index()
-    indices = []
-    for task_id in ids:
-        parts = task_id.split("-")
-        if len(parts) == 3 and parts[1] == today:
-            try:
-                indices.append(int(parts[2]))
-            except ValueError:
-                continue
-    next_idx = max(indices) + 1 if indices else 1
-    return f"T-{today}-{next_idx:03d}"
+## Core Rule
+Coordinator decides. Executor acts. Scripts manage state.
 
-def generate_session_id():
-    return get_next_id("S", SESSIONS_DIR, ".jsonl")
+## Load Order
+1. `AGENTS.md`
+2. `.harness/context/boot.md`
+3. `harness context boot`
+4. role file
+5. map, memory, and policies on demand
 
-def generate_mission_id():
-    # Misson IDs are just logical, we can track them in a mission dir or just use a counter based on tasks archive
-    return get_next_id("M", ARCHIVE_DIR, "")
+## Do Not Load By Default
+- old sessions
+- full logs
+- full source files
+- archived task artifacts
+""",
+        CONTEXT / "project-status.md": """# Project Status
 
-def archive_runtime(state, archive_event_type, summary):
-    mission_id = state.get("active_mission_id")
-    if not mission_id:
-        archive_dir_path = os.path.join(ARCHIVE_DIR, f"orphan-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}")
-    else:
-        archive_dir_path = os.path.join(ARCHIVE_DIR, mission_id)
-    os.makedirs(archive_dir_path, exist_ok=True)
-    if os.path.exists(RUNTIME_DIR):
-        for f in os.listdir(RUNTIME_DIR):
-            src = os.path.join(RUNTIME_DIR, f)
-            dst = os.path.join(archive_dir_path, f)
-            if os.path.exists(dst):
-                if os.path.isdir(dst):
-                    shutil.rmtree(dst)
-                else:
-                    os.remove(dst)
-            shutil.move(src, dst)
-    with open(os.path.join(archive_dir_path, "mission_state.json"), "w") as f:
-        json.dump(state, f, indent=2)
-    emit_event(
-        state.get("active_session_id"),
-        archive_event_type,
-        "coordinator",
-        summary,
-        details_ref=os.path.join(archive_dir_path, "mission_state.json"),
-    )
-    ensure_runtime_dirs()
-    return archive_dir_path
+## Current Goal
+No active goal.
 
-def next_spec_version():
-    os.makedirs(RUNTIME_SPECS_DIR, exist_ok=True)
-    pattern = re.compile(r"implementation_spec\.v(\d{3})\.md$")
-    versions = []
-    for name in os.listdir(RUNTIME_SPECS_DIR):
-        match = pattern.match(name)
-        if match:
-            versions.append(int(match.group(1)))
-    return max(versions) + 1 if versions else 1
+## Open Issues
+- None recorded.
+""",
+        CONTEXT / "recent-summary.md": """# Recent Summary
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Unified Managed Agent Harness CLI",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "Recommended coordinator cycle:\n"
-            "  start -> dispatch-role Reader -> worker-instructions -> collect-role Reader\n"
-            "  -> write-spec -> edit implementation_spec.md -> spec-check\n"
-            "  -> dispatch-role Coder -> worker-instructions -> collect-role Coder\n"
-            "  -> dispatch-role Tester/Reviewer when risk warrants -> archive-current\n"
-        ),
-    )
-    subparsers = parser.add_subparsers(dest="command")
+- No recent harness activity recorded.
+""",
+        POLICIES / "context-loading.md": """# Context Loading Policy
 
-    start_parser = subparsers.add_parser("start", help="Start a new session and mission")
-    start_parser.add_argument("objective", help="Session objective")
+Use progressive loading:
+1. L0: boot, project status, recent summary, runtime boot output.
+2. L1: project map, memory, policies.
+3. L2: targeted source slices, logs, and artifacts.
 
-    dispatch_parser = subparsers.add_parser("dispatch-role", help="Dispatch a task to a role slot")
-    dispatch_parser.add_argument("--role", required=True, help="Worker role (e.g. reader, coder, tester, reviewer)")
-    dispatch_parser.add_argument("--objective", required=True, help="Task objective")
-    dispatch_parser.add_argument("--scope", default="", help="Task scope")
-    dispatch_parser.add_argument("--constraints", default="", help="Task constraints")
-    dispatch_parser.add_argument("--questions", default="", help="Specific questions for Reader to answer")
-    dispatch_parser.add_argument("--task-type", default="", choices=["investigation", "implementation", "verification", "review", "memory-curation", ""], help="Task boundary classification")
-    dispatch_parser.add_argument("--force", action="store_true", help="Force overwrite if slot is unconsumed")
+Coordinator may read small focused snippets directly. Large or uncertain files
+must be located through map and rtk-style search/summary first.
+""",
+        POLICIES / "rtk-policy.md": """# RTK Policy
 
-    subparsers.add_parser("worker-instructions", help="Print instructions for opening worker agents")
+Use rtk-style bounded reading for large source files, logs, generated files,
+broad searches, and unknown-size outputs.
 
-    collect_parser = subparsers.add_parser("collect-role", help="Collect results from a worker role")
-    collect_parser.add_argument("--role", required=True, help="Worker role")
-    collect_parser.add_argument("--full", action="store_true", help="Print full result even if it is long")
+Full reads are allowed for AGENTS.md, role files, policy files, task packets,
+small files under 200 lines, and files explicitly marked `always_full`.
+""",
+        POLICIES / "memory-policy.md": """# Memory Policy
 
-    subparsers.add_parser("write-spec", help="Initialize the implementation_spec.md template")
-    subparsers.add_parser("spec-check", help="Validate implementation_spec.md against completeness rules")
+Executor may propose memory candidates but must not write long-term memory.
+Coordinator decides what to remember. Scripts apply memory entries with source,
+date, category, and basic duplicate prevention.
+""",
+        POLICIES / "skill-policy.md": """# Skill Policy
 
-    subparsers.add_parser("collect-all", help="Collect results from all completed worker roles")
+Harness indexes external skills but does not copy or own them. Skills are loaded
+on demand, and they cannot override system, user, AGENTS.md, role, or harness
+policy constraints.
+""",
+        ROLES / "coordinator.md": """# Role: Coordinator
 
-    subparsers.add_parser("archive-current", help="Archive current mission")
+You are the decision maker and context gatekeeper.
 
-    subparsers.add_parser("status", help="Print the current status of the mission and active roles")
-    subparsers.add_parser("doctor", help="Perform a static health check on the harness state")
+## Responsibilities
+- Load minimal boot context first.
+- Use project map and memory before reading files.
+- Read progressively: map/status, search/summary, slice, full file only with reason.
+- Create task packets when execution would pollute your context.
+- Review Executor results and decide whether memory should be updated.
+- Directly perform small memory or markdown updates when cheaper than delegation.
 
-    args = parser.parse_args()
+## Delegate To Executor When
+- multiple files may change
+- commands, tests, logs, downloads, or generated artifacts are involved
+- the task has more than 3 to 5 operational steps
+- debugging loops or large output are expected
+""",
+        ROLES / "executor.md": """# Role: Executor
+
+You are the action executor. You do not decide project strategy.
+
+## Must Read
+1. `AGENTS.md`
+2. `.harness/roles/executor.md`
+3. the assigned task packet
+4. policies referenced by the task packet
+
+## Rules
+- Follow the task packet.
+- Stay within allowed scope.
+- Use rtk-style bounded reading for large files and logs.
+- Save large command outputs under the task `logs/` directory.
+- Report blockers instead of silently expanding scope.
+- Do not update long-term memory directly.
+""",
+        MEMORY / "project.md": """# Project Memory
+
+Stable facts about the target project.
+""",
+        MEMORY / "status.md": """# Status Memory
+
+Current project state and active handoff notes.
+""",
+        MEMORY / "decisions.md": """# Decisions
+
+Long-lived decisions and rationale.
+""",
+        MEMORY / "negative.md": """# Negative Memory
+
+Known traps, failed approaches, and things to avoid.
+""",
+        MEMORY / "commands.md": """# Commands
+
+Reusable commands discovered for this project.
+""",
+        MEMORY / "files.md": """# Important Files
+
+Important files and why they matter.
+""",
+        MEMORY / "user-preferences.md": """# User Preferences
+
+Stable user preferences for this project.
+""",
+        MEMORY / "lessons.md": """# Lessons
+
+Reusable lessons from completed tasks.
+""",
+    }
+
+    for path, content in files.items():
+        if not path.exists():
+            write_text(path, content)
+
+    if not (SKILLS / "registry.json").exists():
+        write_json(SKILLS / "registry.json", {"version": 1, "skills": []})
+    if not (SKILLS / "registry.md").exists():
+        write_text(SKILLS / "registry.md", "# Skill Registry\n\nNo skills indexed yet.\n")
+    if not STATE.exists():
+        save_state(default_state())
+
+
+def command_init(_args):
+    init_files()
+    print("Initialized MindHandsHarness v2 skeleton.")
+
+
+def command_start(args):
+    init_files()
     state = load_state()
-
-    ensure_runtime_dirs()
-
-    if args.command == "start":
-        if runtime_has_contents():
-            archive_runtime(state, "AUTO_ARCHIVE", "Archived previous runtime before starting a new mission")
-
-        session_id = generate_session_id()
-        mission_id = generate_mission_id()
-        
-        state["active_session_id"] = session_id
-        state["active_mission_id"] = mission_id
-        state["active_stage"] = "investigation"
-        state["spec"]["status"] = "missing"
-        state["spec"]["mission_id"] = None
-        state["spec"]["evidence_checked"] = False
-        state["spec"]["approved"] = False
-        state["spec"]["version"] = 0
-        state["spec"]["snapshot_path"] = None
-        state["role_slots"] = {}
-        save_state(state)
-        
-        mission_meta = {
-            "mission_id": mission_id,
+    session_id = next_id("S", SESSIONS)
+    session_dir = SESSIONS / session_id
+    ensure_dir(session_dir / "tasks")
+    write_json(
+        session_dir / "session.json",
+        {
             "session_id": session_id,
             "objective": args.objective,
-            "created_at": datetime.datetime.now().isoformat(),
-            "stage": "investigation",
-            "status": "active"
-        }
-        with open(os.path.join(RUNTIME_DIR, "mission.json"), "w") as f:
-            json.dump(mission_meta, f, indent=2)
+            "created_at": now(),
+            "status": "active",
+        },
+    )
+    state["active_session_id"] = session_id
+    state["active_task_id"] = None
+    state["last_context_refresh"] = now()
+    save_state(state)
+    emit_event("SESSION_START", "user", args.objective)
+    write_text(
+        CONTEXT / "project-status.md",
+        f"# Project Status\n\n## Current Goal\n{args.objective}\n\n## Active Session\n{session_id}\n\n## Open Issues\n- None recorded.\n",
+    )
+    write_text(CONTEXT / "recent-summary.md", f"# Recent Summary\n\n- {today()}: Started `{session_id}` for {args.objective}.\n")
+    print(f"Started session {session_id}")
 
-        emit_event(session_id, "SESSION_START", "user", f"New session: {args.objective}")
-        emit_event(session_id, "MISSION_START", "user", f"New mission: {args.objective}")
-        print(f"Created session: {session_id}")
-        print(f"Created mission: {mission_id}")
 
-    elif args.command == "write-spec":
-        ensure_runtime_dirs()
-        spec_path = os.path.join(RUNTIME_DIR, "implementation_spec.md")
-        meta_path = os.path.join(RUNTIME_DIR, "implementation_spec.meta.json")
-        if os.path.exists(spec_path):
-            print(f"File {spec_path} already exists. Please edit it directly.")
-            return
-            
-        mission_id = state.get("active_mission_id")
-        if not mission_id:
-            print("Error: No active mission. Run 'start' first.")
-            return
-            
-        template = """# Implementation Spec\n\n## Objective\n[Clear goal]\n\n## Scope\n- Files Allowed:\n- Files Forbidden:\n\n## Required Changes\n[Exact insertion points and required logic modifications]\n\n## Evidence References\n[File paths and line numbers from Reader findings backing up this plan]\n\n## Allowed Autonomy\n[What the Coder CAN decide, e.g., local variable names]\n\n## Must Not Decide\n[What the Coder CANNOT decide, e.g., changing default behavior, adding dependencies]\n\n## Stop Conditions\n[Exact scenarios where the Coder must halt and report blocked]\n"""
-        with open(spec_path, "w") as f:
-            f.write(template)
-            
-        meta_data = {
-            "mission_id": mission_id,
-            "created_at": datetime.datetime.now().isoformat(),
-            "updated_at": datetime.datetime.now().isoformat()
-        }
-        with open(meta_path, "w") as f:
-            json.dump(meta_data, f, indent=2)
-            
-        state["spec"]["status"] = "draft"
-        state["spec"]["mission_id"] = mission_id
-        state["spec"]["version"] = 0
-        state["spec"]["snapshot_path"] = None
-        state["active_stage"] = "spec_draft"
-        save_state(state)
-        emit_event(
-            state.get("active_session_id"),
-            "SPEC_CREATED",
-            "coordinator",
-            "Created implementation spec draft",
-            details_ref=spec_path,
-        )
-        
-        print(f"Created Implementation Spec template at {spec_path}")
+def command_context_boot(_args):
+    init_files()
+    state = load_state()
+    status = read_text(CONTEXT / "project-status.md").strip()
+    recent = read_text(CONTEXT / "recent-summary.md").strip()
+    recent_tasks = recent_session_tasks(state)
+    print("# Boot Context")
+    print()
+    print("## Runtime")
+    print(f"- mode: {state.get('mode')}")
+    print(f"- active_session_id: {state.get('active_session_id')}")
+    print(f"- active_task_id: {state.get('active_task_id')}")
+    print()
+    print("## Core Rule")
+    print("Coordinator decides. Executor acts. Scripts manage state.")
+    print()
+    print("## Project Status")
+    print(status)
+    print()
+    print("## Recent Summary")
+    print(recent)
+    print()
+    print("## Recent Tasks")
+    if recent_tasks:
+        for task in recent_tasks:
+            print(f"- {task['task_id']}: {task['summary']} ({task['type']})")
+    else:
+        print("- None recorded.")
+    print()
+    print("## Important Constraints")
+    print("- Coordinator decides. Executor acts.")
+    print("- Scripts manage maps, tasks, memory, skills, and session state.")
+    print("- Use rtk-style bounded reads for large files, logs, searches, and command outputs.")
+    print()
+    print("## Suggested Next Action")
+    if state.get("active_task_id"):
+        print(f"- Continue or collect active task `{state['active_task_id']}`.")
+    elif state.get("active_session_id"):
+        print("- Create the next task packet or update memory/status.")
+    else:
+        print("- Start a session with `python3 .harness/bin/harness.py start \"<objective>\"`.")
 
-    elif args.command == "spec-check":
-        mission_id = state.get("active_mission_id")
-        if not mission_id:
-            print("Error: No active mission.")
-            return
-            
-        spec_path = os.path.join(RUNTIME_DIR, "implementation_spec.md")
-        meta_path = os.path.join(RUNTIME_DIR, "implementation_spec.meta.json")
-        
-        if not os.path.exists(spec_path):
-            print("Error: implementation_spec.md does not exist.")
-            return
-        if not os.path.exists(meta_path):
-            print("Error: implementation_spec.meta.json does not exist. Did you use 'write-spec'?")
-            return
-            
-        with open(meta_path, "r") as f:
-            meta = json.load(f)
-            
-        if meta.get("mission_id") != mission_id:
-            print(f"Error: Spec is bound to mission {meta.get('mission_id')}, but active mission is {mission_id}.")
-            return
-            
-        with open(spec_path, "r") as f:
-            content = f.read()
-            
-        required_sections = ["## Objective", "## Required Changes", "## Evidence References", "## Allowed Autonomy", "## Must Not Decide", "## Stop Conditions"]
-        missing = [sec for sec in required_sections if sec not in content]
-        if missing:
-            print(f"Error: Spec is missing required sections: {', '.join(missing)}")
-            return
-            
-        ev_start = content.find("## Evidence References")
-        if ev_start != -1:
-            ev_end = content.find("##", ev_start + 1)
-            ev_content = content[ev_start:ev_end] if ev_end != -1 else content[ev_start:]
-            ev_content = ev_content.replace("## Evidence References", "").strip()
-            if not ev_content or ev_content == "[File paths and line numbers from Reader findings backing up this plan]":
-                print("Error: Evidence References section is empty or still contains the placeholder.")
-                return
-        
-        version = next_spec_version()
-        snapshot_path = os.path.join(RUNTIME_SPECS_DIR, f"implementation_spec.v{version:03d}.md")
-        shutil.copy2(spec_path, snapshot_path)
-        meta["updated_at"] = datetime.datetime.now().isoformat()
-        meta["spec_version"] = version
-        meta["snapshot_path"] = snapshot_path
-        with open(meta_path, "w") as f:
-            json.dump(meta, f, indent=2)
-        
-        state["spec"]["status"] = "ready"
-        state["spec"]["version"] = version
-        state["spec"]["snapshot_path"] = snapshot_path
-        state["active_stage"] = "spec_ready"
-        save_state(state)
-        emit_event(
-            state.get("active_session_id"),
-            "SPEC_READY",
-            "coordinator",
-            f"Implementation spec v{version:03d} passed checks",
-            details_ref=snapshot_path,
-        )
-        print(f"Success: Implementation Spec passed all checks and is marked as 'ready' (v{version:03d}).")
 
-    elif args.command == "dispatch-role":
-        if not state.get("active_session_id"):
-            print("Error: No active session. Run 'start' first.")
-            return
-        role = args.role.lower()
-        
-        slot = state.get("role_slots", {}).get(role)
-        if slot and slot["status"] in ["dispatched", "running", "completed"] and not args.force:
-            print(f"Error: Role slot '{role}' has unconsumed status: {slot['status']}")
-            print("Please run 'collect-role' or 'archive-current' first, or pass '--force' to overwrite.")
-            return
+def recent_session_tasks(state, limit=5):
+    session_dir = active_session_dir(state)
+    if not session_dir:
+        return []
+    event_path = session_dir / "events.jsonl"
+    if not event_path.exists():
+        return []
+    tasks = []
+    for line in event_path.read_text().splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("task_id") and event.get("type") in {"TASK_CREATED", "EXECUTOR_DISPATCHED", "EXECUTOR_RESULT"}:
+            tasks.append(
+                {
+                    "task_id": event["task_id"],
+                    "type": event.get("type", ""),
+                    "summary": event.get("summary", ""),
+                }
+            )
+    return tasks[-limit:]
 
-        task_type = args.task_type
-        if not task_type:
-            role_to_task_type = {
-                "reader": "investigation",
-                "coder": "implementation",
-                "tester": "verification",
-                "reviewer": "review",
-                "memory-curator": "memory-curation"
+
+def command_context_probe(args):
+    init_files()
+    state, session_dir = require_session()
+    task_id = args.task_id or state.get("active_task_id")
+    task_dir = session_dir / "tasks" / task_id
+    if not task_dir.exists():
+        raise SystemExit(f"Error: task not found: {task_id}")
+    probe_path = task_dir / "context-probes.md"
+    current = read_text(probe_path, "# Context Probes\n")
+    count = current.count("## Probe") + 1
+    entry = f"""
+## Probe {count}
+- purpose: {args.purpose}
+- method: {args.method}
+- source: {args.source}
+- result: {args.result}
+- time: {now()}
+"""
+    write_text(probe_path, current.rstrip() + "\n" + entry)
+    emit_event("CONTEXT_PROBE", "coordinator", args.purpose, task_id=task_id, details_ref=probe_path)
+    print(f"Recorded probe for {task_id}")
+
+
+def file_hash(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def should_skip(path):
+    parts = set(path.parts)
+    if parts & EXCLUDED_DIRS:
+        return True
+    if path.is_dir():
+        return True
+    if path == MAP_INDEX or path == MAP_MD or path == MAP_DIFF:
+        return True
+    if path.as_posix().startswith(".harness/runtime/"):
+        return True
+    return False
+
+
+def load_policy_for(path, line_count):
+    if path.as_posix() in {"AGENTS.md"}:
+        return "always_full"
+    if path.as_posix().startswith(".harness/roles/") or path.as_posix().startswith(".harness/policies/"):
+        return "always_full"
+    if line_count <= 200:
+        return "full_allowed"
+    return "rtk_summary_first"
+
+
+def scan_project():
+    entries = []
+    for path in sorted(Path(".").rglob("*")):
+        if should_skip(path):
+            continue
+        rel = path.as_posix()[2:] if path.as_posix().startswith("./") else path.as_posix()
+        try:
+            text = path.read_text(errors="ignore")
+            line_count = len(text.splitlines())
+        except OSError:
+            line_count = 0
+        stat = path.stat()
+        entries.append(
+            {
+                "path": rel,
+                "type": "file",
+                "size": stat.st_size,
+                "hash": file_hash(path),
+                "line_count": line_count,
+                "load_policy": load_policy_for(Path(rel), line_count),
+                "summary": summarize_path(rel),
             }
-            task_type = role_to_task_type.get(role, "implementation")
-            
-        spec_file = os.path.join(RUNTIME_DIR, "implementation_spec.md")
-        meta_file = os.path.join(RUNTIME_DIR, "implementation_spec.meta.json")
-        if role in ["coder", "tester", "reviewer"]:
-            if not os.path.exists(spec_file) or not os.path.exists(meta_file):
-                print(f"Error: Refusing to dispatch '{role}'. The file implementation_spec.md or its meta does not exist.")
-                print("Coordinator MUST perform Evidence Sufficiency Check and write the Implementation Spec first.")
-                return
-                
-            with open(meta_file, "r") as f:
-                meta = json.load(f)
-            
-            mission_id = state.get("active_mission_id")
-            if meta.get("mission_id") != mission_id:
-                print(f"Error: Spec mission_id ({meta.get('mission_id')}) does not match active mission_id ({mission_id}).")
-                print("This is likely a stale spec from a previous mission.")
-                return
-                
-            spec_status = state.get("spec", {}).get("status")
-            if spec_status not in ["ready", "approved"]:
-                print(f"Error: Spec status is '{spec_status}', but must be 'ready' or 'approved' to dispatch '{role}'.")
-                print("Please run 'spec-check' to validate the spec first.")
-                return
+        )
+    return entries
 
-        task_id = generate_task_id()
-        
-        task_dir = os.path.join(RUNTIME_TASKS_DIR, task_id)
-        os.makedirs(task_dir, exist_ok=False)
-        task_path = os.path.join(task_dir, f"{role}.task.md")
-        prompt_path = os.path.join(task_dir, f"{role}.prompt.md")
-        result_path = os.path.join(task_dir, f"{role}.result.md")
-        current_prompt_path = os.path.join(RUNTIME_DIR, f"{role}.prompt.md")
-        legacy_result_path = os.path.join(RUNTIME_DIR, f"{role}.result.md")
-        
-        # Build Task Packet
-        task_content = f"# Task Packet: {task_id}\n"
-        task_content += f"- **Role**: {role}\n"
-        task_content += f"- **Task Type**: {task_type}\n"
-        task_content += f"- **Objective**: {args.objective}\n"
-        if args.scope: task_content += f"- **Scope**: {args.scope}\n"
-        if args.constraints: task_content += f"- **Constraints**: {args.constraints}\n"
-        if args.questions: task_content += f"- **Questions to Answer**:\n{args.questions}\n"
-        
-        with open(task_path, "w") as f:
-            f.write(task_content)
-        
-        # Render Prompt
-        prompt = ["# INSTRUCTIONS", "You are acting as a specialized worker in a Managed Agent Harness.", 
-                  f"Your role is '{role}'. Read your ROLE below.",
-                  "Follow the TASK PACKET strictly. When finished, provide your output using the WORKER RESULT template.",
-                  f"Write your result to `{result_path}`. Do not write the result to chat.", ""]
-        
-        role_file = os.path.join(ROLES_DIR, f"{role}.md")
-        if os.path.exists(role_file):
-            prompt.append("# ROLE")
-            with open(role_file, "r") as f: prompt.append(f.read())
-            prompt.append("")
-            
-        proj_mem = os.path.join(MEMORY_DIR, "project.md")
-        if os.path.exists(proj_mem):
-            prompt.append("# PROJECT CONTEXT")
-            with open(proj_mem, "r") as f: prompt.append(f.read())
-            prompt.append("")
-            
-        spec_file = os.path.join(RUNTIME_DIR, "implementation_spec.md")
-        if role in ["coder", "tester", "reviewer"] and os.path.exists(spec_file):
-            prompt.append("# IMPLEMENTATION SPEC")
-            prompt.append("This is the strict specification generated by the Coordinator Brain. You MUST follow it.")
-            with open(spec_file, "r") as f: prompt.append(f.read())
-            prompt.append("")
-            
-        task_pkt_file = os.path.join(PROTOCOLS_DIR, "task-packet.md")
-        if os.path.exists(task_pkt_file):
-            with open(task_pkt_file, "r") as f:
-                pkt_protocol = f.read()
-            boundary = get_task_type_boundary(pkt_protocol, task_type)
-            if boundary:
-                prompt.append("# TASK TYPE BOUNDARY")
-                prompt.append(f"Your task type is '{task_type}'. Boundary constraint:")
-                prompt.append(boundary)
-                prompt.append("")
-            
-        prompt.append("# TASK PACKET")
-        prompt.append(task_content)
-        prompt.append("")
-        
-        prompt.append("# OUTPUT FORMAT (WORKER RESULT)")
-        worker_res_file = os.path.join(PROTOCOLS_DIR, "worker-result.md")
-        if os.path.exists(worker_res_file):
-            with open(worker_res_file, "r") as f:
-                res_protocol = f.read()
-            
-            common = get_markdown_section(res_protocol, "Common Metadata")
-            if common:
-                prompt.append("## Common Metadata")
-                prompt.append(common)
-                prompt.append("")
 
-            role_to_section = {
-                "reader": "1. Reader Result",
-                "coder": "2. Coder Result",
-                "tester": "3. Tester Result",
-                "reviewer": "4. Reviewer Result",
-                "memory-curator": "5. Memory Curator Result"
-            }
-            section_name = role_to_section.get(role)
-            if section_name:
-                section_content = get_markdown_section(res_protocol, section_name)
-                if section_content:
-                    prompt.append(f"## {section_name}")
-                    prompt.append(section_content)
-        else:
-            prompt.append("Provide a concise summary of findings, code changes, or test results.")
-            prompt.append("Include any risks or proposed memory updates.")
-        
-        with open(prompt_path, "w") as f:
-            f.write("\n".join(prompt))
-        shutil.copy2(prompt_path, current_prompt_path)
-            
-        # Clear only the role entry result used by older bootstrap instructions. The
-        # canonical per-task result path is never reused.
-        if os.path.exists(legacy_result_path):
-            os.remove(legacy_result_path)
-            
-        state.setdefault("role_slots", {})[role] = {
-            "status": "dispatched",
-            "task_id": task_id,
-            "task_dir": task_dir,
-            "task_path": task_path,
-            "prompt_path": prompt_path,
-            "result_path": result_path,
-            "current_prompt_path": current_prompt_path,
-            "legacy_result_path": legacy_result_path
+def summarize_path(path):
+    if path == "AGENTS.md":
+        return "Universal router and manifest."
+    if path.startswith(".harness/roles/"):
+        return "Role definition."
+    if path.startswith(".harness/policies/"):
+        return "Harness policy."
+    if path.startswith(".harness/context/"):
+        return "Project context artifact."
+    if path.startswith(".harness/memory/"):
+        return "Long-term memory file."
+    if path.startswith(".harness/bin/"):
+        return "Runtime CLI script."
+    return "Project file."
+
+
+def write_project_map(entries):
+    lines = [
+        "# Project Map",
+        "",
+        "## Project Purpose",
+        "MindHandsHarness is a context-gated Coordinator/Executor harness.",
+        "",
+        "## Important Files",
+    ]
+    for entry in entries:
+        if entry["path"] in {"AGENTS.md", ".harness/bin/harness.py"} or entry["path"].startswith(".harness/roles/"):
+            lines.append(f"- `{entry['path']}`: {entry['summary']} ({entry['load_policy']})")
+    lines.extend(["", "## Indexed Files"])
+    for entry in entries:
+        lines.append(f"- `{entry['path']}`: {entry['summary']}")
+    lines.extend(["", f"## Last Updated\n{today()}", ""])
+    write_text(MAP_MD, "\n".join(lines))
+    write_json(MAP_INDEX, {"version": 1, "last_updated": now(), "entries": entries})
+
+
+def command_map(args):
+    init_files()
+    old_entries = {item["path"]: item for item in read_json(MAP_INDEX, {"entries": []}).get("entries", [])}
+    entries = scan_project()
+    new_entries = {item["path"]: item for item in entries}
+
+    if args.map_command in ["init", "update"]:
+        added = sorted(set(new_entries) - set(old_entries))
+        removed = sorted(set(old_entries) - set(new_entries))
+        changed = sorted(
+            path for path in set(new_entries) & set(old_entries)
+            if new_entries[path]["hash"] != old_entries[path]["hash"]
+        )
+        write_project_map(entries)
+        report = ["# Map Update Report", ""]
+        report.append("## Added")
+        report.extend([f"- {path}" for path in added] or ["- None"])
+        report.append("")
+        report.append("## Changed")
+        report.extend([f"- {path}" for path in changed] or ["- None"])
+        report.append("")
+        report.append("## Removed")
+        report.extend([f"- {path}" for path in removed] or ["- None"])
+        write_text(MAP_DIFF, "\n".join(report) + "\n")
+        print("\n".join(added + changed + removed) if added or changed or removed else "Map is current.")
+    elif args.map_command == "show":
+        print(read_text(MAP_MD, "# Project Map\n\nNo map generated. Run `harness map init`.\n"))
+    elif args.map_command == "diff":
+        print(read_text(MAP_DIFF, "No map diff recorded.\n"))
+
+
+def require_session():
+    state = load_state()
+    session_dir = active_session_dir(state)
+    if not session_dir:
+        raise SystemExit("Error: no active session. Run `harness start \"<objective>\"` first.")
+    ensure_dir(session_dir / "tasks")
+    return state, session_dir
+
+
+def command_task(args):
+    init_files()
+    if args.task_command == "new":
+        state, session_dir = require_session()
+        task_id = next_id("T", session_dir / "tasks")
+        task_dir = session_dir / "tasks" / task_id
+        ensure_dir(task_dir / "logs")
+        ensure_dir(task_dir / "artifacts")
+        task = f"""# Task Packet
+
+## Task ID
+{task_id}
+
+## Title
+{args.title}
+
+## Mode
+{args.mode}
+
+## Objective
+{args.objective}
+
+## Background
+Use the boot context, project map, memory, and policies only as needed.
+
+## Allowed Scope
+{args.allowed or "- Not specified. Ask Coordinator before changing files."}
+
+## Forbidden Scope
+{args.forbidden or "- Do not broaden scope silently."}
+
+## Steps
+{format_semicolon_list(args.steps)}
+
+## Tool Policy
+- Use rtk-style bounded reads for large files, logs, generated files, and broad searches.
+- Save large outputs under `{task_dir / "logs"}`.
+
+## Validation
+{args.validation or "- Not specified."}
+
+## Output Required
+- `executor_result.md` with Status, Changed Files, Commands Run, Validation, Issues, Tool Policy Compliance, Memory Candidates, Next Suggested Action.
+"""
+        write_text(task_dir / "task.md", task)
+        write_text(task_dir / "context-probes.md", "# Context Probes\n\n- None recorded yet.\n")
+        state["active_task_id"] = task_id
+        save_state(state)
+        emit_event("TASK_CREATED", "coordinator", args.title, task_id=task_id, details_ref=task_dir / "task.md")
+        print(f"Created task {task_id}")
+    elif args.task_command == "dispatch":
+        state, session_dir = require_session()
+        task_id = args.task_id or state.get("active_task_id")
+        task_dir = session_dir / "tasks" / task_id
+        task_path = task_dir / "task.md"
+        if not task_path.exists():
+            raise SystemExit(f"Error: task not found: {task_id}")
+        prompt = "\n\n".join(
+            [
+                "# Executor Prompt",
+                read_text(ROLES / "executor.md"),
+                "# Context Loading Policy",
+                read_text(POLICIES / "context-loading.md"),
+                "# RTK Policy",
+                read_text(POLICIES / "rtk-policy.md"),
+                "# Assigned Task Packet",
+                read_text(task_path),
+                "# Result Path",
+                f"Write the result to `{task_dir / 'executor_result.md'}`.",
+            ]
+        )
+        write_text(task_dir / "executor_prompt.md", prompt)
+        emit_event("EXECUTOR_DISPATCHED", "coordinator", f"Dispatched {task_id}", task_id=task_id)
+        print(f"Rendered executor prompt for {task_id}")
+    elif args.task_command == "collect":
+        state, session_dir = require_session()
+        task_id = args.task_id or state.get("active_task_id")
+        task_dir = session_dir / "tasks" / task_id
+        result_path = task_dir / "executor_result.md"
+        if not result_path.exists():
+            raise SystemExit(f"Error: result not found: {result_path}")
+        result = read_text(result_path)
+        candidates = extract_markdown_section(result, "Memory Candidates")
+        if candidates:
+            write_text(task_dir / "memory_candidates.md", "# Memory Candidates\n\n" + candidates.strip() + "\n")
+        emit_event("EXECUTOR_RESULT", "executor", f"Collected {task_id}", task_id=task_id, details_ref=result_path)
+        print(result)
+
+
+def format_semicolon_list(value):
+    if not value:
+        return "- Not specified."
+    items = [item.strip() for item in value.split(";") if item.strip()]
+    return "\n".join(f"{idx}. {item}" for idx, item in enumerate(items, start=1))
+
+
+def extract_markdown_section(content, section_name):
+    lines = content.splitlines()
+    start = None
+    for idx, line in enumerate(lines):
+        if line.strip().lower() == f"## {section_name}".lower():
+            start = idx + 1
+            break
+    if start is None:
+        return ""
+    end = len(lines)
+    for idx in range(start, len(lines)):
+        line = lines[idx]
+        if line.startswith("## ") and line.strip().lower() != f"## {section_name}".lower():
+            end = idx
+            break
+    return "\n".join(lines[start:end]).strip()
+
+
+def command_memory(args):
+    init_files()
+    if args.memory_command == "propose":
+        proposal_id = next_id("P", MEMORY_PROPOSALS)
+        proposal = {
+            "proposal_id": proposal_id,
+            "type": args.type,
+            "source": args.source,
+            "content": args.content,
+            "evidence": args.evidence,
+            "created_at": now(),
+            "status": "pending",
         }
-        save_state(state)
-        
-        emit_event(
-            state["active_session_id"],
-            "TASK_DISPATCH",
-            "coordinator",
-            f"Dispatched {role}: {args.objective}",
-            task_id,
-            details_ref=task_path,
-            artifacts=[task_path, prompt_path],
+        write_json(MEMORY_PROPOSALS / f"{proposal_id}.json", proposal)
+        write_text(
+            MEMORY_PROPOSALS / f"{proposal_id}.md",
+            f"""# Memory Proposal {proposal_id}
+
+## Type
+{args.type}
+
+## Source
+{args.source}
+
+## Content
+{args.content}
+
+## Evidence
+{args.evidence}
+
+## Status
+pending
+""",
         )
-        print(f"Dispatched {role} (Task {task_id})")
+        emit_event("MEMORY_PROPOSED", "coordinator", args.content, details_ref=MEMORY_PROPOSALS / f"{proposal_id}.md")
+        print(f"Created proposal {proposal_id}")
+        return
 
-    elif args.command == "worker-instructions":
-        slots = state.get("role_slots", {})
-        active_roles = [r for r, d in slots.items() if d["status"] in ["dispatched", "pending", "running"]]
-        if not active_roles:
-            print("No active roles dispatched.")
-            return
-        print("Please ask the user to open a new sub-agent window and send this instruction:\n")
-        print("```text")
-        for role in active_roles:
-            role_cap = role.capitalize()
-            print(f"请读取 .harness/worker_bootstrap.md，并以 {role_cap} 身份执行当前任务。完成后只回复完成或失败。")
-        print("```")
+    if args.memory_command == "show-boot":
+        print("# Memory Boot")
+        for name, path in memory_targets().items():
+            text = read_text(path).strip()
+            if not text:
+                continue
+            lines = [line for line in text.splitlines() if line.strip()]
+            preview_lines = lines[:8]
+            tail_lines = lines[-6:]
+            if tail_lines != preview_lines[-6:]:
+                preview_lines = preview_lines + ["..."] + tail_lines
+            preview = "\n".join(preview_lines)
+            print()
+            print(f"## {name}")
+            print(preview)
+        return
 
-    elif args.command == "collect-role":
-        role = args.role.lower()
-        slot = state.get("role_slots", {}).get(role)
-        if not slot:
-            print(f"Error: Role {role} not in active slots.")
-            return
-        
-        result_path = slot["result_path"]
-        legacy_result_path = slot.get("legacy_result_path", os.path.join(RUNTIME_DIR, f"{role}.result.md"))
-        if not os.path.exists(result_path) and os.path.exists(legacy_result_path):
-            os.makedirs(os.path.dirname(result_path), exist_ok=True)
-            shutil.copy2(legacy_result_path, result_path)
-        if not os.path.exists(result_path):
-            print(f"Error: Result file {result_path} not found.")
-            return
-            
-        with open(result_path, "r") as f:
-            result_content = f.read()
-            
-        print(f"--- {role.upper()} RESULT SUMMARY ---")
-        if len(result_content) > 2000 and not args.full:
-            print(result_content[:2000])
-            print(f"\n... [RESULT TRUNCATED DUE TO LENGTH ({len(result_content)} chars)] ...")
-            print(f"To see the full result, view {result_path} or run 'collect-role --role {role} --full'")
-        else:
-            print(result_content)
-        print("---------------------------------")
-        
-        slot["status"] = "consumed"
-        save_state(state)
-        emit_event(
-            state["active_session_id"],
-            "WORKER_RESULT",
-            role,
-            f"Collected result for {role}",
-            slot["task_id"],
-            details_ref=result_path,
+    if args.memory_command == "compact":
+        lines = ["# Recent Summary", ""]
+        for proposal_path in sorted(MEMORY_PROPOSALS.glob("*.json"))[-5:]:
+            proposal = read_json(proposal_path, {})
+            lines.append(f"- {proposal.get('created_at')}: proposal `{proposal.get('proposal_id')}` {proposal.get('type')}: {proposal.get('content')}")
+        state = load_state()
+        for task in recent_session_tasks(state):
+            lines.append(f"- {task['task_id']}: {task['summary']} ({task['type']})")
+        if len(lines) == 2:
+            lines.append("- No recent harness activity recorded.")
+        write_text(CONTEXT / "recent-summary.md", "\n".join(lines) + "\n")
+        print("Compacted recent summary.")
+        return
+
+    proposal = None
+    if args.proposal_id:
+        proposal = read_json(MEMORY_PROPOSALS / f"{args.proposal_id}.json", None)
+        if not proposal:
+            raise SystemExit(f"Error: proposal not found: {args.proposal_id}")
+        args.type = proposal["type"]
+        args.source = proposal["source"]
+        args.content = proposal["content"]
+
+    target = {
+        "project": MEMORY / "project.md",
+        "status": MEMORY / "status.md",
+        "decision": MEMORY / "decisions.md",
+        "negative": MEMORY / "negative.md",
+        "command": MEMORY / "commands.md",
+        "file": MEMORY / "files.md",
+        "preference": MEMORY / "user-preferences.md",
+        "lesson": MEMORY / "lessons.md",
+    }.get(args.type)
+    if args.memory_command != "apply":
+        raise SystemExit("Error: unsupported memory command.")
+    if not target:
+        raise SystemExit(f"Error: unsupported memory type: {args.type}")
+    current = read_text(target)
+    if args.content not in current:
+        entry = f"\n## {today()} - {args.source}\n- {args.content}\n"
+        write_text(target, current.rstrip() + "\n" + entry)
+    recent = read_text(CONTEXT / "recent-summary.md")
+    line = f"- {today()}: Memory `{args.type}` updated from `{args.source}`: {args.content}\n"
+    if args.content not in recent:
+        write_text(CONTEXT / "recent-summary.md", recent.rstrip() + "\n" + line)
+    emit_event("MEMORY_UPDATED", "coordinator", args.content, details_ref=target)
+    if proposal:
+        proposal["status"] = "applied"
+        proposal["applied_at"] = now()
+        write_json(MEMORY_PROPOSALS / f"{proposal['proposal_id']}.json", proposal)
+    print(f"Updated {target}")
+
+
+def memory_targets():
+    return {
+        "project": MEMORY / "project.md",
+        "status": MEMORY / "status.md",
+        "decision": MEMORY / "decisions.md",
+        "negative": MEMORY / "negative.md",
+        "command": MEMORY / "commands.md",
+        "file": MEMORY / "files.md",
+        "preference": MEMORY / "user-preferences.md",
+        "lesson": MEMORY / "lessons.md",
+    }
+
+
+def parse_skill_name(skill_file):
+    text = read_text(skill_file)
+    for line in text.splitlines():
+        if line.startswith("name:"):
+            return line.split(":", 1)[1].strip().strip("'\"")
+    return skill_file.parent.name
+
+
+def command_skills(args):
+    init_files()
+    if args.skills_command == "scan":
+        root = Path(args.path).expanduser()
+        found = []
+        if root.exists():
+            for skill_file in sorted(root.rglob("SKILL.md")):
+                found.append(
+                    {
+                        "name": parse_skill_name(skill_file),
+                        "location": "external",
+                        "path_hint": str(skill_file),
+                        "trigger": [],
+                        "load_policy": "on_demand",
+                        "conflict_policy": "harness_priority",
+                    }
+                )
+        write_json(SKILLS / "registry.json", {"version": 1, "skills": found})
+        lines = ["# Skill Registry", ""]
+        lines.extend([f"- `{item['name']}`: {item['path_hint']}" for item in found] or ["No skills indexed."])
+        write_text(SKILLS / "registry.md", "\n".join(lines) + "\n")
+        print(f"Indexed {len(found)} skill(s).")
+    elif args.skills_command == "list":
+        registry = read_json(SKILLS / "registry.json", {"skills": []})
+        for item in registry.get("skills", []):
+            print(f"{item['name']}\t{item['path_hint']}")
+    elif args.skills_command == "register":
+        registry = read_json(SKILLS / "registry.json", {"version": 1, "skills": []})
+        skills = [item for item in registry.get("skills", []) if item.get("name") != args.name]
+        skills.append(
+            {
+                "name": args.name,
+                "location": "external",
+                "path_hint": str(Path(args.path).expanduser()),
+                "trigger": split_csv(args.trigger),
+                "load_policy": "on_demand",
+                "conflict_policy": "harness_priority",
+            }
         )
+        write_skill_registry(skills)
+        print(f"Registered skill {args.name}")
+    elif args.skills_command == "resolve":
+        registry = read_json(SKILLS / "registry.json", {"skills": []})
+        for item in registry.get("skills", []):
+            if item.get("name") == args.name:
+                print(json.dumps(item, indent=2, ensure_ascii=False))
+                return
+        raise SystemExit(f"Error: skill not found: {args.name}")
 
-    elif args.command == "collect-all":
-        for role, slot in state.get("role_slots", {}).items():
-            if slot["status"] == "dispatched": # In reality we assume they are done if result exists
-                if os.path.exists(slot["result_path"]):
-                    print(f"\nCollecting {role}:")
-                    os.system(f"{sys.executable} {__file__} collect-role --role {role}")
 
-    elif args.command == "archive-current":
-        mission_id = state.get("active_mission_id")
-        if not mission_id:
-            print("No active mission to archive.")
-            return
-        archive_path = archive_runtime(state, "MISSION_ARCHIVE", f"Archived mission {mission_id}")
-            
-        state["active_mission_id"] = None
-        state["role_slots"] = {}
-        state["active_stage"] = "archived"
-        state["spec"]["status"] = "missing"
-        state["spec"]["mission_id"] = None
-        state["spec"]["evidence_checked"] = False
-        state["spec"]["approved"] = False
-        state["spec"]["version"] = 0
-        state["spec"]["snapshot_path"] = None
-        save_state(state)
-        print(f"Archived mission to {archive_path}")
+def split_csv(value):
+    return [item.strip() for item in value.split(",") if item.strip()]
 
-    elif args.command == "status":
-        print(f"--- HARNESS STATUS ---")
-        print(f"Active Session: {state.get('active_session_id')}")
-        print(f"Active Mission: {state.get('active_mission_id')}")
-        print(f"Active Stage:   {state.get('active_stage')}")
-        
-        spec = state.get("spec", {})
-        print(f"Spec Status:    {spec.get('status')} (Mission: {spec.get('mission_id')})")
-        
-        slots = state.get("role_slots", {})
-        print("\n--- ROLE SLOTS ---")
-        if not slots:
-            print("No active roles.")
-        else:
-            for r, d in slots.items():
-                print(f"  {r.capitalize()}: {d['status']} (Task: {d['task_id']})")
-                
-        print("\n--- RUNTIME/CURRENT ---")
-        if os.path.exists(RUNTIME_DIR):
-            files = os.listdir(RUNTIME_DIR)
-            for f in sorted(files):
-                print(f"  {f}")
-        else:
-            print("  (Empty)")
 
-        unconsumed = [r for r, d in slots.items() if d['status'] in ["dispatched", "running", "completed"]]
-        if unconsumed:
-            print("\nUnconsumed Results:")
-            for r in unconsumed:
-                print(f"  Role '{r}' needs to be collected.")
-        
-        print("\n--- NEXT STEP HINT ---")
-        if not state.get("active_session_id"):
-            print("Run: start \"<mission objective>\"")
-        elif not state.get("active_mission_id"):
-            print("Run: start \"<next mission objective>\"")
-        elif unconsumed:
-            print("Ask the worker to finish, then run: collect-role --role <role>")
-        elif spec.get("status") == "missing":
-            if any(d.get("status") == "consumed" for d in slots.values()):
-                print("If evidence is sufficient, run: write-spec. Otherwise dispatch another Reader.")
-            else:
-                print("Dispatch a Reader with narrow questions.")
-        elif spec.get("status") == "draft":
-            print("Edit implementation_spec.md, then run: spec-check")
-        elif spec.get("status") in ["ready", "approved"]:
-            print("Dispatch Coder, Tester, or Reviewer as appropriate; archive when done.")
-        else:
-            print("Run: doctor")
-        print("----------------------")
+def write_skill_registry(skills):
+    write_json(SKILLS / "registry.json", {"version": 1, "skills": skills})
+    lines = ["# Skill Registry", ""]
+    lines.extend([f"- `{item['name']}`: {item['path_hint']}" for item in skills] or ["No skills indexed."])
+    write_text(SKILLS / "registry.md", "\n".join(lines) + "\n")
 
-    elif args.command == "doctor":
-        print("--- HARNESS DOCTOR ---")
-        issues = 0
-        task_dispatch_counts = {}
-        if os.path.exists(SESSIONS_DIR):
-            for name in os.listdir(SESSIONS_DIR):
-                if not name.endswith(".jsonl"):
-                    continue
-                with open(os.path.join(SESSIONS_DIR, name), "r") as f:
-                    for line_no, line in enumerate(f, start=1):
-                        try:
-                            event = json.loads(line)
-                        except json.JSONDecodeError:
-                            print(f"[!] Invalid JSON in {name}:{line_no}.")
-                            issues += 1
-                            continue
-                        if event.get("event_type") == "TASK_DISPATCH" and event.get("task_id"):
-                            task_dispatch_counts.setdefault(event["task_id"], []).append(f"{name}:{line_no}")
-        for task_id, refs in sorted(task_dispatch_counts.items()):
-            if len(refs) > 1:
-                print(f"[!] Duplicate task_id {task_id} appears in TASK_DISPATCH events: {', '.join(refs)}")
-                issues += 1
-        
-        mission_id = state.get("active_mission_id")
-        if mission_id:
-            mission_file = os.path.join(RUNTIME_DIR, "mission.json")
-            if not os.path.exists(mission_file):
-                print("[!] mission.json is missing.")
-                issues += 1
-            else:
-                with open(mission_file, "r") as f:
-                    try:
-                        m = json.load(f)
-                        if m.get("mission_id") != mission_id:
-                            print(f"[!] mission.json ID ({m.get('mission_id')}) != state ID ({mission_id})")
-                            issues += 1
-                    except:
-                        print("[!] mission.json is corrupted.")
-                        issues += 1
-                        
-            spec_file = os.path.join(RUNTIME_DIR, "implementation_spec.md")
-            meta_file = os.path.join(RUNTIME_DIR, "implementation_spec.meta.json")
-            
-            if state.get("spec", {}).get("status") in ["ready", "approved"]:
-                if not os.path.exists(spec_file):
-                    print("[!] Spec is ready but implementation_spec.md is missing.")
-                    issues += 1
-                if not os.path.exists(meta_file):
-                    print("[!] Spec is ready but implementation_spec.meta.json is missing.")
-                    issues += 1
-                else:
-                    with open(meta_file, "r") as f:
-                        try:
-                            meta = json.load(f)
-                            if meta.get("mission_id") != mission_id:
-                                print(f"[!] Spec meta mission_id ({meta.get('mission_id')}) != state ID ({mission_id})")
-                                issues += 1
-                        except:
-                            print("[!] implementation_spec.meta.json is corrupted.")
-                            issues += 1
-                snapshot_path = state.get("spec", {}).get("snapshot_path")
-                if not snapshot_path:
-                    print("[!] Spec is ready but snapshot_path is missing.")
-                    issues += 1
-                elif not os.path.exists(snapshot_path):
-                    print(f"[!] Spec snapshot is missing: {snapshot_path}")
-                    issues += 1
-                            
-        for r, d in state.get("role_slots", {}).items():
-            if not os.path.exists(d.get("task_path", "")):
-                print(f"[!] Role '{r}' task file is missing: {d.get('task_path')}")
-                issues += 1
-            if not os.path.exists(d.get("prompt_path", "")):
-                print(f"[!] Role '{r}' prompt file is missing: {d.get('prompt_path')}")
-                issues += 1
-            if d["status"] in ["dispatched", "running", "completed"]:
-                if os.path.exists(d.get("result_path", "")) and d["status"] == "dispatched":
-                    print(f"[i] Role '{r}' has a result but status is still 'dispatched'.")
-                legacy_result = d.get("legacy_result_path")
-                if legacy_result and os.path.exists(legacy_result) and not os.path.exists(d.get("result_path", "")):
-                    print(f"[i] Role '{r}' has a legacy result pending collection: {legacy_result}")
-                    
-        if os.path.exists(ARCHIVE_DIR):
-            for name in sorted(os.listdir(ARCHIVE_DIR)):
-                archive_path = os.path.join(ARCHIVE_DIR, name)
-                if not os.path.isdir(archive_path) or name.startswith("orphan-"):
-                    continue
-                if not os.path.exists(os.path.join(archive_path, "mission_state.json")):
-                    print(f"[!] Archive {name} is missing mission_state.json.")
-                    issues += 1
-                    
-        if issues == 0:
-            print("OK! All checks passed.")
-        else:
-            print(f"Found {issues} potential issue(s).")
-        print("----------------------")
+
+def command_status(_args):
+    init_files()
+    state = load_state()
+    print("# Harness Status")
+    print(f"- version: {state.get('version')}")
+    print(f"- mode: {state.get('mode')}")
+    print(f"- active_session_id: {state.get('active_session_id')}")
+    print(f"- active_task_id: {state.get('active_task_id')}")
+
+
+def command_doctor(_args):
+    init_files()
+    issues = []
+    for path in [CONTEXT / "boot.md", ROLES / "coordinator.md", ROLES / "executor.md", STATE]:
+        if not path.exists():
+            issues.append(f"Missing {path}")
+    if issues:
+        print("# Harness Doctor")
+        for issue in issues:
+            print(f"- {issue}")
+        raise SystemExit(1)
+    print("OK")
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(description="MindHandsHarness v2 runtime CLI")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("init", help="Create v2 skeleton files").set_defaults(func=command_init)
+
+    start = sub.add_parser("start", help="Start a new Coordinator/Executor session")
+    start.add_argument("objective")
+    start.set_defaults(func=command_start)
+
+    context = sub.add_parser("context", help="Render context artifacts")
+    context_sub = context.add_subparsers(dest="context_command", required=True)
+    context_sub.add_parser("boot").set_defaults(func=command_context_boot)
+    probe = context_sub.add_parser("probe")
+    probe.add_argument("--task-id", default="")
+    probe.add_argument("--purpose", required=True)
+    probe.add_argument("--method", required=True)
+    probe.add_argument("--source", required=True)
+    probe.add_argument("--result", required=True)
+    probe.set_defaults(func=command_context_probe)
+
+    map_parser = sub.add_parser("map", help="Manage project map")
+    map_sub = map_parser.add_subparsers(dest="map_command", required=True)
+    for name in ["init", "update", "show", "diff"]:
+        map_sub.add_parser(name).set_defaults(func=command_map)
+
+    task = sub.add_parser("task", help="Manage Executor task packets")
+    task_sub = task.add_subparsers(dest="task_command", required=True)
+    new_task = task_sub.add_parser("new")
+    new_task.add_argument("--title", required=True)
+    new_task.add_argument("--objective", required=True)
+    new_task.add_argument("--mode", choices=["inspect", "execute", "verify", "review"], default="execute")
+    new_task.add_argument("--allowed", default="")
+    new_task.add_argument("--forbidden", default="")
+    new_task.add_argument("--steps", default="")
+    new_task.add_argument("--validation", default="")
+    new_task.set_defaults(func=command_task)
+    dispatch = task_sub.add_parser("dispatch")
+    dispatch.add_argument("--task-id", default="")
+    dispatch.set_defaults(func=command_task)
+    collect = task_sub.add_parser("collect")
+    collect.add_argument("--task-id", default="")
+    collect.set_defaults(func=command_task)
+
+    memory = sub.add_parser("memory", help="Apply approved memory updates")
+    memory_sub = memory.add_subparsers(dest="memory_command", required=True)
+    propose_memory = memory_sub.add_parser("propose")
+    propose_memory.add_argument("--type", required=True)
+    propose_memory.add_argument("--source", required=True)
+    propose_memory.add_argument("--content", required=True)
+    propose_memory.add_argument("--evidence", default="")
+    propose_memory.set_defaults(func=command_memory)
+    apply_memory = memory_sub.add_parser("apply")
+    apply_memory.add_argument("--type", default="")
+    apply_memory.add_argument("--source", default="")
+    apply_memory.add_argument("--content", default="")
+    apply_memory.add_argument("--proposal-id", default="")
+    apply_memory.set_defaults(func=command_memory)
+    memory_sub.add_parser("show-boot").set_defaults(func=command_memory)
+    memory_sub.add_parser("compact").set_defaults(func=command_memory)
+
+    skills = sub.add_parser("skills", help="Index external skills")
+    skills_sub = skills.add_subparsers(dest="skills_command", required=True)
+    scan = skills_sub.add_parser("scan")
+    scan.add_argument("--path", required=True)
+    scan.set_defaults(func=command_skills)
+    skills_sub.add_parser("list").set_defaults(func=command_skills)
+    register = skills_sub.add_parser("register")
+    register.add_argument("--name", required=True)
+    register.add_argument("--path", required=True)
+    register.add_argument("--trigger", default="")
+    register.set_defaults(func=command_skills)
+    resolve = skills_sub.add_parser("resolve")
+    resolve.add_argument("name")
+    resolve.set_defaults(func=command_skills)
+
+    sub.add_parser("status").set_defaults(func=command_status)
+    sub.add_parser("doctor").set_defaults(func=command_doctor)
+    return parser
+
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+    args.func(args)
+
 
 if __name__ == "__main__":
     main()
